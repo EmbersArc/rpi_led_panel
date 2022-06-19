@@ -2,7 +2,6 @@
 name = "rpi-led-panel"
 version = "0.1.0"
 edition = "2021"
-license-file = "LICENSE"
 license = "GPL-2.0"
 authors = ["Sven Niederberger <s-niederberger@outlook.com>"]
 description = "Control LED matrices with a Raspberry Pi."
