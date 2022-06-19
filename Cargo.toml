@@ -1,0 +1,28 @@
+[package]
+name = "rpi_led_matrix"
+version = "0.1.0"
+edition = "2021"
+authors = ["Sven Niederberger <s-niederberger@outlook.com>"]
+
+[[example]]
+name = "image"
+required-features = ["drawing"]
+
+[[example]]
+name = "drawing"
+required-features = ["drawing"]
+
+[[example]]
+name = "rotating_square"
+required-features = ["drawing"]
+
+[features]
+default = ["drawing"]
+drawing = ["embedded-graphics"]
+
+[dependencies]
+argh = "0.1.7"
+memmap2 = "0.5.4"
+embedded-graphics = { version = "0.7.1", optional = true }
+thread-priority = "0.8.2"
+libc = "0.2.126"
