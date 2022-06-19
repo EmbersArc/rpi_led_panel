@@ -5,7 +5,7 @@ use std::{
 
 use memmap2::{MmapMut, MmapOptions};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PiChip {
     /// Model 0 and 1
     BCM2708,

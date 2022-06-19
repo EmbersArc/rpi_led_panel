@@ -1,8 +1,14 @@
 [package]
-name = "rpi_led_matrix"
+name = "rpi-led-panel"
 version = "0.1.0"
 edition = "2021"
+license-file = "LICENSE"
 authors = ["Sven Niederberger <s-niederberger@outlook.com>"]
+description = "Control LED matrices with a Raspberry Pi."
+repository = "https://github.com/EmbersArc/rpi_led_panel"
+homepage = "https://github.com/EmbersArc/rpi_led_panel"
+readme = "README.md"
+keywords = ["led", "matrix", "raspberry", "pi", "rgb"]
 
 [[example]]
 name = "image"

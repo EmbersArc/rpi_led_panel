@@ -2,7 +2,7 @@ use std::ops::BitOr;
 
 use crate::gpio_bits;
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ColorBits {
     pub(crate) r1: u32,
     pub(crate) g1: u32,
@@ -30,6 +30,7 @@ impl ColorBits {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Panels {
     pub(crate) color_bits: [ColorBits; 6],
 }
@@ -40,18 +41,28 @@ impl Panels {
     }
 
     pub(crate) fn red_bits(&self) -> u32 {
-        self.color_bits.iter().map(|p| p.red_bits()).fold(0, BitOr::bitor)
+        self.color_bits
+            .iter()
+            .map(|p| p.red_bits())
+            .fold(0, BitOr::bitor)
     }
 
     pub(crate) fn green_bits(&self) -> u32 {
-        self.color_bits.iter().map(|p| p.green_bits()).fold(0, BitOr::bitor)
+        self.color_bits
+            .iter()
+            .map(|p| p.green_bits())
+            .fold(0, BitOr::bitor)
     }
 
     pub(crate) fn blue_bits(&self) -> u32 {
-        self.color_bits.iter().map(|p| p.blue_bits()).fold(0, BitOr::bitor)
+        self.color_bits
+            .iter()
+            .map(|p| p.blue_bits())
+            .fold(0, BitOr::bitor)
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HardwareMapping {
     pub(crate) output_enable: u32,
     pub(crate) clock: u32,

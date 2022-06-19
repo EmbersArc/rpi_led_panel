@@ -10,7 +10,7 @@ pub(crate) const SUB_PANELS: usize = 2;
 pub(crate) const K_BIT_PLANES: usize = 11;
 
 /// Configuration for an RGB matrix panel controller.
-#[derive(FromArgs)]
+#[derive(FromArgs, Debug, PartialEq, Eq, Hash)]
 pub struct RGBMatrixConfig {
     /// the display wiring e.g. "adafruit_hat" or "adafruit_hat_pwm". Default: "adafruit_hat_pwm"
     #[argh(option, default = "String::from(\"adafruit_hat_pwm\")")]

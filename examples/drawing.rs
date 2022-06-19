@@ -8,7 +8,7 @@ use embedded_graphics::{
     text::{Alignment, Text},
     Drawable,
 };
-use rpi_led_matrix::{RGBMatrix, RGBMatrixConfig};
+use rpi_led_panel::{RGBMatrix, RGBMatrixConfig};
 
 fn main() {
     let config: RGBMatrixConfig = argh::from_env();

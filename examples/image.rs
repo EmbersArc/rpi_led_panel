@@ -6,7 +6,7 @@ use embedded_graphics::{
     prelude::*,
     Drawable,
 };
-use rpi_led_matrix::{RGBMatrix, RGBMatrixConfig};
+use rpi_led_panel::{RGBMatrix, RGBMatrixConfig};
 
 const IMAGE_DATA: &[u8] = include_bytes!("../assets/ferris_test_card.rgb");
 const IMAGE_SIZE: usize = 64;

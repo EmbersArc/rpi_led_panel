@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use rpi_led_matrix::{RGBMatrix, RGBMatrixConfig};
+use rpi_led_panel::{RGBMatrix, RGBMatrixConfig};
 
 fn scale_col(value: isize, low: isize, high: isize) -> u8 {
     if value < low {
