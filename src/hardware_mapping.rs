@@ -2,7 +2,7 @@ use std::ops::BitOr;
 
 use crate::gpio_bits;
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ColorBits {
     pub(crate) r1: u32,
     pub(crate) g1: u32,
@@ -13,6 +13,17 @@ pub(crate) struct ColorBits {
 }
 
 impl ColorBits {
+    pub const fn unused() -> Self {
+        Self {
+            r1: 0,
+            g1: 0,
+            b1: 0,
+            r2: 0,
+            g2: 0,
+            b2: 0,
+        }
+    }
+
     pub(crate) fn used_bits(&self) -> u32 {
         self.r1 | self.r2 | self.g1 | self.g2 | self.b1 | self.b2
     }
@@ -117,7 +128,7 @@ impl HardwareMapping {
 
 impl HardwareMapping {
     /// The regular hardware mapping used by the adapter PCBs.
-    pub fn regular() -> Self {
+    pub const fn regular() -> Self {
         Self {
             output_enable: gpio_bits!(18),
             clock: gpio_bits!(17),
@@ -159,16 +170,16 @@ impl HardwareMapping {
                         g2: gpio_bits!(16),
                         b2: gpio_bits!(21),
                     },
-                    ColorBits::default(),
-                    ColorBits::default(),
-                    ColorBits::default(),
+                    ColorBits::unused(),
+                    ColorBits::unused(),
+                    ColorBits::unused(),
                 ],
             },
         }
     }
 
     // An unmodified Adafruit HAT
-    pub fn adafruit_hat() -> Self {
+    pub const fn adafruit_hat() -> Self {
         Self {
             output_enable: gpio_bits!(4),
             clock: gpio_bits!(17),
@@ -190,18 +201,18 @@ impl HardwareMapping {
                         g2: gpio_bits!(16),
                         b2: gpio_bits!(23),
                     },
-                    ColorBits::default(),
-                    ColorBits::default(),
-                    ColorBits::default(),
-                    ColorBits::default(),
-                    ColorBits::default(),
+                    ColorBits::unused(),
+                    ColorBits::unused(),
+                    ColorBits::unused(),
+                    ColorBits::unused(),
+                    ColorBits::unused(),
                 ],
             },
         }
     }
 
     // An Adafruit HAT with the PWM modification
-    pub fn adafruit_hat_pwm() -> Self {
+    pub const fn adafruit_hat_pwm() -> Self {
         Self {
             output_enable: gpio_bits!(18),
             ..Self::adafruit_hat()
@@ -210,7 +221,7 @@ impl HardwareMapping {
 
     /// The regular pin-out, but for Raspberry Pi1. The very first Pi1 Rev1 uses the same pin for GPIO-21 as
     /// later Pis use GPIO-27. Make it work for both.
-    pub fn regular_pi1() -> Self {
+    pub const fn regular_pi1() -> Self {
         Self {
             output_enable: gpio_bits!(18),
             clock: gpio_bits!(17),
@@ -236,11 +247,11 @@ impl HardwareMapping {
                         b2: gpio_bits!(10), // masks: SPI0_MOSI
                     },
                     // No more chains - there are not enough GPIO
-                    ColorBits::default(),
-                    ColorBits::default(),
-                    ColorBits::default(),
-                    ColorBits::default(),
-                    ColorBits::default(),
+                    ColorBits::unused(),
+                    ColorBits::unused(),
+                    ColorBits::unused(),
+                    ColorBits::unused(),
+                    ColorBits::unused(),
                 ],
             },
         }
@@ -248,7 +259,7 @@ impl HardwareMapping {
 
     /// Early forms of this library had this as default mapping, mostly derived from the 26 GPIO-header
     /// version so that it also can work on 40 Pin GPIO headers with more parallel chains. Not used anymore.
-    pub fn classic() -> Self {
+    pub const fn classic() -> Self {
         Self {
             output_enable: gpio_bits!(27), // Not available on RPi1, Rev 1
             clock: gpio_bits!(11),
@@ -286,16 +297,16 @@ impl HardwareMapping {
                         g2: gpio_bits!(26),
                         b2: gpio_bits!(21),
                     },
-                    ColorBits::default(),
-                    ColorBits::default(),
-                    ColorBits::default(),
+                    ColorBits::unused(),
+                    ColorBits::unused(),
+                    ColorBits::unused(),
                 ],
             },
         }
     }
 
     /// Classic pin-out for Rev-A Raspberry Pi.
-    pub fn classic_pi1() -> Self {
+    pub const fn classic_pi1() -> Self {
         Self {
             // The Revision-1 and Revision-2 boards have different GPIO mapping on the P1-3 and P1-5. So we
             // use both interpretations. To keep the I2C pins free, we avoid these in later mappings.
@@ -319,11 +330,11 @@ impl HardwareMapping {
                         g2: gpio_bits!(24),
                         b2: gpio_bits!(25),
                     },
-                    ColorBits::default(),
-                    ColorBits::default(),
-                    ColorBits::default(),
-                    ColorBits::default(),
-                    ColorBits::default(),
+                    ColorBits::unused(),
+                    ColorBits::unused(),
+                    ColorBits::unused(),
+                    ColorBits::unused(),
+                    ColorBits::unused(),
                 ],
             },
         }

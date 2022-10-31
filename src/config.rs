@@ -77,7 +77,7 @@ pub struct RGBMatrixConfig {
 }
 
 impl RGBMatrixConfig {
-    pub(crate) fn double_rows(&self) -> usize {
+    pub(crate) const fn double_rows(&self) -> usize {
         self.rows / SUB_PANELS
     }
 }

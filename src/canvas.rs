@@ -16,10 +16,10 @@ impl PixelDesignator {
     pub(crate) fn from_hardware_mapping(hardware_mapping: &HardwareMapping) -> Self {
         let h = hardware_mapping;
         Self {
+            gpio_word: None,
             r_bit: h.panels.red_bits(),
             g_bit: h.panels.green_bits(),
             b_bit: h.panels.blue_bits(),
-            gpio_word: None,
             mask: !0u32,
         }
     }
