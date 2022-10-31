@@ -23,7 +23,7 @@ fn main() {
     let config: RGBMatrixConfig = argh::from_env();
     let rows = config.rows as isize;
     let cols = config.cols as isize;
-    let (mut matrix, mut canvas) = RGBMatrix::new(config, 0);
+    let (mut matrix, mut canvas) = RGBMatrix::new(config, 0).expect("Matrix initialization failed");
 
     let [center_x, center_y] = [cols / 2, rows / 2];
 

@@ -1,9 +1,4 @@
-use std::{
-    fs::{read_to_string, OpenOptions},
-    rc::Rc,
-};
-
-use memmap2::{MmapMut, MmapOptions};
+use std::fs::read_to_string;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PiChip {
@@ -66,29 +61,12 @@ impl PiChip {
     }
 
     // All peripherals can be described by an offset from the Peripheral Base Address.
-    const fn get_peripherals_base(&self) -> u64 {
+    pub(crate) const fn get_peripherals_base(&self) -> u64 {
         match self {
             PiChip::BCM2708 => 0x20000000,
             PiChip::BCM2709 => 0x3F000000,
             PiChip::BCM2711 => 0xFE000000,
         }
-    }
-
-    pub(crate) fn mmap_bcm_register(&self, offset: u64, size_bytes: usize) -> Rc<MmapMut> {
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open("/dev/mem")
-            .expect("Failed to open '/dev/mem'");
-        let base = self.get_peripherals_base();
-        let map = unsafe {
-            MmapOptions::new()
-                .offset(base + offset)
-                .len(size_bytes)
-                .map_mut(&file)
-                .unwrap()
-        };
-        Rc::new(map)
     }
 
     pub(crate) fn gpio_slowdown(&self) -> u32 {

@@ -1,7 +1,6 @@
 use crate::{
     gpio_bits,
     registers::{ClkRegisters, GPIOFunction, GPIORegisters, PWMRegisters, TimeRegisters},
-    utils::linux_has_module_loaded,
 };
 
 const PWM_BASE_TIME_NS: u32 = 2;
@@ -28,17 +27,6 @@ impl PinPulser {
         gpio_registers: &mut GPIORegisters,
         clk_registers: &mut ClkRegisters,
     ) -> Self {
-        if linux_has_module_loaded("snd_bcm2835") {
-            panic!(
-                "\
-                The sound module is loaded. Disable on-board sound first.\n\
-                \t* Raspberry PI OS: Set `dtparam=audio=off` in `/boot/config.txt`\n\
-                \t* Other distributions: Add `blacklist snd_bcm2835` in `/etc/modprobe.d/alsa-blacklist.conf`\n\
-                Finally, reboot the system and try again.
-                "
-            );
-        }
-
         let sleep_hints_us = bitplane_timings_ns.iter().map(|t| t / 1000).collect();
 
         let time_base = bitplane_timings_ns[0];

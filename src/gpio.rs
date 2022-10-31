@@ -1,3 +1,8 @@
+use std::{
+    error::Error,
+    fmt::{Display, Formatter},
+};
+
 use crate::{
     chip::PiChip,
     config::K_BIT_PLANES,
@@ -9,6 +14,33 @@ use crate::{
     utils::linux_has_module_loaded,
     RGBMatrixConfig,
 };
+
+#[derive(Debug)]
+pub enum GpioInitializationError {
+    OneWireProtocolEnabled,
+    SoundModuleLoaded,
+}
+
+impl Error for GpioInitializationError {}
+
+impl Display for GpioInitializationError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GpioInitializationError::OneWireProtocolEnabled => f.write_str(
+                "The Raspberry Pi has the one-wire protocol enabled.\n\
+                This will mess with the display if GPIO pins overlap.\n\
+                Disable 1-wire in raspi-config (Interface Options).",
+            ),
+            GpioInitializationError::SoundModuleLoaded => f.write_str(
+                "The sound module is loaded. Disable on-board sound first.\n\
+                \t* Raspberry PI OS: Set `dtparam=audio=off` in `/boot/config.txt`\n\
+                \t* Other distributions: Add `blacklist snd_bcm2835` in \
+                `/etc/modprobe.d/alsa-blacklist.conf`\n\
+                Finally, reboot the system and try again.",
+            ),
+        }
+    }
+}
 
 pub(crate) struct Gpio {
     gpio_registers: GPIORegisters,
@@ -28,7 +60,11 @@ impl Gpio {
         hardware_mapping: &HardwareMapping,
         config: &RGBMatrixConfig,
         address_setter: &dyn RowAddressSetter,
-    ) -> Self {
+    ) -> Result<Self, GpioInitializationError> {
+        if linux_has_module_loaded("snd_bcm2835") {
+            return Err(GpioInitializationError::SoundModuleLoaded);
+        }
+
         // TODO: Proper error handling.
         let mut gpio_registers = GPIORegisters::new(chip);
         let time_registers = TimeRegisters::new(chip);
@@ -68,11 +104,7 @@ impl Gpio {
             output_bits &= !(input_bits | reserved_bits);
 
             if output_bits & gpio_bits!(4) != 0 && linux_has_module_loaded("w1_gpio") {
-                panic!(
-                    "This Raspberry Pi has the one-wire protocol enabled.\n\
-                    This will mess with the display if GPIO pins overlap.\n\
-                    Disable 1-wire in raspi-config (Interface Options)."
-                );
+                return Err(GpioInitializationError::OneWireProtocolEnabled);
             }
 
             let k_max_available_bit = 31;
@@ -103,7 +135,7 @@ impl Gpio {
 
         let gpio_slowdown = chip.gpio_slowdown();
 
-        Self {
+        Ok(Self {
             gpio_registers,
             time_registers,
             pwm_registers,
@@ -112,7 +144,7 @@ impl Gpio {
             output_bits,
             reserved_bits,
             gpio_slowdown,
-        }
+        })
     }
 
     pub(crate) fn write_masked_bits(&mut self, value: u32, mask: u32) {

@@ -15,7 +15,7 @@ fn main() {
     let config: RGBMatrixConfig = argh::from_env();
     let rows = config.rows;
     let cols = config.cols;
-    let (mut matrix, mut canvas) = RGBMatrix::new(config, 0);
+    let (mut matrix, mut canvas) = RGBMatrix::new(config, 0).expect("Matrix initialization failed");
 
     let image_data = ImageRawBE::<Rgb888>::new(IMAGE_DATA, IMAGE_SIZE as u32);
     let image = Image::new(

@@ -1,5 +1,7 @@
 use std::{
-    fs::write,
+    error::Error,
+    fmt::{Display, Formatter},
+    fs::{write, OpenOptions},
     mem::replace,
     sync::mpsc::{
         channel, sync_channel, Receiver, RecvTimeoutError, Sender, SyncSender, TryRecvError,
@@ -13,7 +15,7 @@ use thread_priority::{set_current_thread_priority, ThreadPriority};
 use crate::{
     canvas::{Canvas, PixelDesignator, PixelDesignatorMap},
     chip::PiChip,
-    gpio::Gpio,
+    gpio::{Gpio, GpioInitializationError},
     hardware_mapping::HardwareMapping,
     init_sequence::InitializationSequence,
     multiplex_mapper::{get_multiplex_mapper, MultiplexMapper},
@@ -49,6 +51,55 @@ fn initialize_update_thread(chip: &PiChip) {
     }
 }
 
+#[derive(Debug)]
+pub enum MatrixCreationError {
+    InvalidChipName(String),
+    ChipDeterminationError,
+    InvalidHardwareMapping(String),
+    TooManyParallelChains(usize),
+    InvalidInitializationSequence(String),
+    InvalidDitherBits(usize),
+    ThreadTimedOut,
+    GpioError(GpioInitializationError),
+    MemoryAccessError,
+}
+
+impl Error for MatrixCreationError {}
+
+impl Display for MatrixCreationError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MatrixCreationError::InvalidChipName(name) => {
+                write!(f, "'{name}' is not a valid chip name")
+            }
+            MatrixCreationError::ChipDeterminationError => {
+                f.write_str("Failed to automatically determine Raspberry Pi model.")
+            }
+            MatrixCreationError::InvalidHardwareMapping(name) => {
+                write!(f, "'{name}' is not a valid hardware mapping.")
+            }
+            MatrixCreationError::TooManyParallelChains(max) => {
+                write!(f, "GPIO mapping only supports up to {max} parallel panels.")
+            }
+            MatrixCreationError::InvalidInitializationSequence(name) => {
+                write!(f, "Initialization sequence '{name}' is not supported.")
+            }
+            MatrixCreationError::InvalidDitherBits(value) => {
+                write!(f, "Unsupported dither bits '{value}'.")
+            }
+            MatrixCreationError::ThreadTimedOut => {
+                f.write_str("The update thread did not return in time.")
+            }
+            MatrixCreationError::GpioError(error) => {
+                write!(f, "GPIO initialization error: {error}")
+            }
+            MatrixCreationError::MemoryAccessError => f.write_str(
+                "Failed to access the physical memory. Not running with root privileges?",
+            ),
+        }
+    }
+}
+
 pub struct RGBMatrix {
     /// The join handle of the update thread.
     thread_handle: Option<JoinHandle<()>>,
@@ -74,27 +125,32 @@ impl RGBMatrix {
     /// [`RGBMatrix::receive_new_inputs`]. Only bits that are not already in use for reading or writing by the
     /// matrix are allowed. Use [`RGBMatrix::enabled_input_bits`] after calling this function to check which
     /// bits were actually available.
-    pub fn new(mut config: RGBMatrixConfig, requested_inputs: u32) -> (Self, Box<Canvas>) {
-        let chip = if let Some(name) = config.pi_chip.as_ref() {
-            match PiChip::from_name(name) {
-                Some(c) => c,
-                None => panic!("'{}' is not a valid chip name", name),
-            }
-        } else {
-            PiChip::determine().expect("Failed to automatically determine Raspberry Pi model.")
-        };
+    pub fn new(
+        mut config: RGBMatrixConfig,
+        requested_inputs: u32,
+    ) -> Result<(Self, Box<Canvas>), MatrixCreationError> {
+        // Check if we can access the memory before doing anything else.
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/mem")
+            .map_err(|_| MatrixCreationError::MemoryAccessError)?;
 
-        let hardware_mapping = match HardwareMapping::from_name(&config.gpio_mapping) {
-            Some(hm) => hm,
-            None => panic!("'{}' is not a valid hardware mapping.", config.gpio_mapping),
-        };
+        let chip = if let Some(name) = config.pi_chip.as_ref() {
+            PiChip::from_name(name)
+                .ok_or_else(|| MatrixCreationError::InvalidChipName(name.to_string()))
+        } else {
+            PiChip::determine().ok_or(MatrixCreationError::ChipDeterminationError)
+        }?;
+
+        let hardware_mapping =
+            HardwareMapping::from_name(&config.gpio_mapping).ok_or_else(|| {
+                MatrixCreationError::InvalidHardwareMapping(config.gpio_mapping.to_string())
+            })?;
 
         let max_parallel = hardware_mapping.max_parallel_chains();
         if config.parallel > max_parallel {
-            panic!(
-                "GPIO mapping only supports up to {} parallel panels.",
-                max_parallel
-            );
+            return Err(MatrixCreationError::TooManyParallelChains(max_parallel));
         }
 
         let pixel_designator = PixelDesignator::from_hardware_mapping(&hardware_mapping);
@@ -112,6 +168,23 @@ impl RGBMatrix {
             );
         }
 
+        let initialization_sequence = config
+            .panel_type
+            .as_deref()
+            .map(|name| {
+                InitializationSequence::from_name(name).ok_or_else(|| {
+                    MatrixCreationError::InvalidInitializationSequence(name.to_string())
+                })
+            })
+            .transpose()?;
+
+        let dither_start_bits = match config.dither_bits {
+            0 => [0, 0, 0, 0],
+            1 => [0, 1, 0, 1],
+            2 => [0, 1, 2, 2],
+            _ => return Err(MatrixCreationError::InvalidDitherBits(config.dither_bits)),
+        };
+
         // Create two canvases, one for the display update thread and one for the user to modify. They will be
         // swapped out after each frame.
         let canvas = Box::new(Canvas::new(&config, shared_mapper));
@@ -122,8 +195,8 @@ impl RGBMatrix {
             sync_channel::<Box<Canvas>>(1);
         let (shutdown_sender, shutdown_receiver) = channel::<()>();
         let (input_sender, input_receiver) = channel::<u32>();
-
-        let (input_request_sender, input_request_receiver) = channel::<u32>();
+        let (thread_start_result_sender, thread_start_result_receiver) =
+            channel::<Result<u32, MatrixCreationError>>();
 
         let thread_handle = spawn(move || {
             initialize_update_thread(&chip);
@@ -131,13 +204,19 @@ impl RGBMatrix {
             let mut address_setter =
                 get_row_address_setter(config.row_setter.as_str(), &hardware_mapping, &config);
 
-            let mut gpio = Gpio::new(chip, &hardware_mapping, &config, address_setter.as_ref());
+            let mut gpio =
+                match Gpio::new(chip, &hardware_mapping, &config, address_setter.as_ref()) {
+                    Ok(gpio) => gpio,
+                    Err(error) => {
+                        thread_start_result_sender
+                            .send(Err(MatrixCreationError::GpioError(error)))
+                            .expect("Could not send to main thread.");
+                        return;
+                    }
+                };
 
             // Run the initialization sequence if necessary.
-            if let Some(panel_type) = config.panel_type.as_ref() {
-                let sequence = InitializationSequence::from_name(panel_type).unwrap_or_else(|| {
-                    panic!("Initialization sequence '{}' is not supported.", panel_type)
-                });
+            if let Some(sequence) = initialization_sequence {
                 sequence.run(&mut gpio, &hardware_mapping, config.cols);
             }
 
@@ -145,34 +224,22 @@ impl RGBMatrix {
 
             // Dither sequence
             let mut dither_low_bit_sequence = 0;
-            let dither_start_bits = match config.dither_bits {
-                0 => [0, 0, 0, 0],
-                1 => [0, 1, 0, 1],
-                2 => [0, 1, 2, 2],
-                _ => panic!("Unsupported dither bits."),
-            };
 
             let frame_time_target_us = (1_000_000.0 / config.refresh_rate as f64) as u64;
 
             let color_clk_mask = hardware_mapping.get_color_clock_mask(config.parallel);
 
             let enabled_input_bits = gpio.request_enabled_inputs(requested_inputs);
-            input_request_sender
-                .send(enabled_input_bits)
+            thread_start_result_sender
+                .send(Ok(enabled_input_bits))
                 .expect("Could not send to main thread.");
 
             'thread: loop {
                 let start_time = gpio.get_time();
                 loop {
                     // Try to receive a shutdown request.
-                    match shutdown_receiver.try_recv() {
-                        Ok(()) => {
-                            break 'thread;
-                        }
-                        Err(TryRecvError::Disconnected) => {
-                            break 'thread;
-                        }
-                        Err(TryRecvError::Empty) => {}
+                    if shutdown_receiver.try_recv() != Err(TryRecvError::Empty) {
+                        break 'thread;
                     }
                     // Read input bits and send them if they have changed.
                     let new_inputs = gpio.read();
@@ -231,9 +298,9 @@ impl RGBMatrix {
             );
         });
 
-        let enabled_input_bits = input_request_receiver
-            .recv()
-            .expect("Could not receive input bits from update thread.");
+        let enabled_input_bits = thread_start_result_receiver
+            .recv_timeout(Duration::from_secs(2))
+            .map_err(|_| MatrixCreationError::ThreadTimedOut)??;
 
         let rgbmatrix = Self {
             thread_handle: Some(thread_handle),
@@ -245,7 +312,7 @@ impl RGBMatrix {
             frame_rate_monitor: FrameRateMonitor::new(),
         };
 
-        (rgbmatrix, canvas)
+        Ok((rgbmatrix, canvas))
     }
 
     fn apply_pixel_mapper(
@@ -258,10 +325,7 @@ impl RGBMatrix {
         let old_width = shared_mapper.width();
         let old_height = shared_mapper.height();
         mapper.edit_rows_cols(&mut config.rows, &mut config.cols);
-        let [new_width, new_height] = match mapper.get_size_mapping(old_width, old_height) {
-            Some(wh) => wh,
-            None => todo!(),
-        };
+        let [new_width, new_height] = mapper.get_size_mapping(old_width, old_height);
         let mut new_mapper = PixelDesignatorMap::new(pixel_designator, hardware_mapping, &*config);
         for y in 0..new_height {
             for x in 0..new_width {
@@ -318,7 +382,7 @@ impl Drop for RGBMatrix {
         } = self;
         if let Some(handle) = thread_handle.take() {
             shutdown_sender.send(()).ok();
-            handle.join().unwrap();
+            handle.join().expect("Could not join update thread.");
         }
     }
 }

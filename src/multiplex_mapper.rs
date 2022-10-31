@@ -13,11 +13,11 @@ pub(crate) trait MultiplexMapper {
         *cols *= self.panel_stretch_factor();
     }
 
-    fn get_size_mapping(&self, matrix_width: usize, matrix_height: usize) -> Option<[usize; 2]> {
+    fn get_size_mapping(&self, matrix_width: usize, matrix_height: usize) -> [usize; 2] {
         // Matrix width has been altered. Alter it back.
         let visible_width = matrix_width / self.panel_stretch_factor();
         let visible_height = matrix_height * self.panel_stretch_factor();
-        Some([visible_width, visible_height])
+        [visible_width, visible_height]
     }
 
     fn map_visible_to_matrix(
