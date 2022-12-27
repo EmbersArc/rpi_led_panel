@@ -16,6 +16,7 @@ fn luminance_cie1931(c: u8, brightness: u8) -> u16 {
 pub(crate) struct ColorLookup {
     per_brightness: [[u16; 256]; 100],
 }
+
 impl ColorLookup {
     pub(crate) fn new_cie1931() -> Self {
         let mut per_brightness = [[0; 256]; 100];
