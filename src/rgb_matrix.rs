@@ -299,7 +299,7 @@ impl RGBMatrix {
         });
 
         let enabled_input_bits = thread_start_result_receiver
-            .recv_timeout(Duration::from_secs(2))
+            .recv_timeout(Duration::from_secs(10))
             .map_err(|_| MatrixCreationError::ThreadTimedOut)??;
 
         let rgbmatrix = Self {
@@ -382,7 +382,7 @@ impl Drop for RGBMatrix {
         } = self;
         if let Some(handle) = thread_handle.take() {
             shutdown_sender.send(()).ok();
-            handle.join().expect("Could not join update thread.");
+            let _result = handle.join();
         }
     }
 }
