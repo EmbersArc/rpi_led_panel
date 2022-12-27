@@ -63,7 +63,7 @@ impl InitializationSequence {
     }
 
     /// The FM6217 is very similar to the FM6216. FM6217 adds Register 3 to allow for automatic bad pixel
-    /// supression.
+    /// suppression.
     fn init_fm6127(gpio: &mut Gpio, hm: &HardwareMapping, columns: usize) {
         let bits_on = hm.panels.color_bits[0].used_bits() | hm.a;
         let bits_off = 0;
