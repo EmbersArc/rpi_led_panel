@@ -165,14 +165,20 @@ const MIN_SYS_SLEEP_TIME_US: u64 = 100;
 /// Required to read `ST_CLO` and the adjacent `ST_CHI`.
 /// This has to be a struct so that we can have a fixed memory layout.
 #[repr(C)]
-struct LowAndHigh {
+struct TimeRegister {
     low: u32,
     high: u32,
 }
 
+impl TimeRegister {
+    fn get_u64(&self) -> u64 {
+        ((self.high as u64) << u32::BITS) | self.low as u64
+    }
+}
+
 // Time measurement.
 pub(crate) struct TimeRegisters {
-    time_reg: MmapPtr<LowAndHigh>,
+    time_reg: MmapPtr<TimeRegister>,
     sleep_factor: f32,
 }
 
@@ -187,8 +193,7 @@ impl TimeRegisters {
     }
 
     pub(crate) fn get_time(&self) -> u64 {
-        let registers = self.time_reg.read();
-        ((registers.high as u64) << u32::BITS) | registers.low as u64
+        self.time_reg.read().get_u64()
     }
 
     pub(crate) fn sleep(&mut self, duration_us: u64) {
