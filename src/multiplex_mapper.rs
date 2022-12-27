@@ -461,34 +461,25 @@ impl MultiplexMapper for P10MapperZ {
     }
 
     fn map_single_panel(&self, x: usize, y: usize) -> [usize; 2] {
-        let y_comp = if y == 0 || y == 1 || y == 8 || y == 9 {
-            127
-        } else if y == 2 || y == 3 || y == 10 || y == 11 {
-            112
-        } else if y == 4 || y == 5 || y == 12 || y == 13 {
-            111
-        } else if y == 6 || y == 7 || y == 14 || y == 15 {
-            96
-        } else {
-            0
+        let y_comp = match y {
+            0 | 1 | 8 | 9 => 127,
+            2 | 3 | 10 | 11 => 112,
+            4 | 5 | 12 | 13 => 111,
+            6 | 7 | 14 | 15 => 96,
+            _ => 0,
         };
 
-        let matrix_x =
-            if y == 0 || y == 1 || y == 4 || y == 5 || y == 8 || y == 9 || y == 12 || y == 13 {
-                y_comp - x - 24 * (x / 8)
-            } else {
-                y_comp + x - 40 * (x / 8)
-            };
+        let matrix_x = match y {
+            0 | 1 | 4 | 5 | 8 | 9 | 12 | 13 => y_comp - x - 24 * (x / 8),
+            _ => y_comp + x - 40 * (x / 8),
+        };
 
-        let matrix_y = if y == 0 || y == 2 || y == 4 || y == 6 {
-            3
-        } else if y == 1 || y == 3 || y == 5 || y == 7 {
-            2
-        } else if y == 8 || y == 10 || y == 12 || y == 14 {
-            1
-        } else {
-            // y == 9 || y == 11 || y == 13 || y == 15
-            0
+        let matrix_y = match y {
+            0 | 2 | 4 | 6 => 3,
+            1 | 3 | 5 | 7 => 2,
+            8 | 10 | 12 | 14 => 1,
+            9 | 11 | 13 | 15 => 0,
+            _ => y,
         };
 
         [matrix_x, matrix_y]
