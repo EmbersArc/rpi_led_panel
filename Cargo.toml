@@ -26,8 +26,8 @@ default = ["drawing"]
 drawing = ["embedded-graphics"]
 
 [dependencies]
-argh = "0.1.9"
-memmap2 = "0.5.8"
+argh = "0.1.10"
+memmap2 = "0.5.9"
 embedded-graphics = { version = "0.7.1", optional = true }
 thread-priority = "0.10.0"
-libc = "0.2.138"
+libc = "0.2.139"

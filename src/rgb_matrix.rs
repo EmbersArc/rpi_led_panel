@@ -3,6 +3,7 @@ use std::{
     fmt::{Display, Formatter},
     fs::{write, OpenOptions},
     mem::replace,
+    str::FromStr,
     sync::mpsc::{
         channel, sync_channel, Receiver, RecvTimeoutError, Sender, SyncSender, TryRecvError,
     },
@@ -13,7 +14,7 @@ use std::{
 use thread_priority::{set_current_thread_priority, ThreadPriority};
 
 use crate::{
-    canvas::{Canvas, PixelDesignator, PixelDesignatorMap},
+    canvas::{Canvas, LedSequence, PixelDesignator, PixelDesignatorMap},
     chip::PiChip,
     gpio::{Gpio, GpioInitializationError},
     hardware_mapping::HardwareMapping,
@@ -56,6 +57,7 @@ pub enum MatrixCreationError {
     InvalidChipName(String),
     ChipDeterminationError,
     InvalidHardwareMapping(String),
+    InvalidLedSequence(String),
     TooManyParallelChains(usize),
     InvalidInitializationSequence(String),
     InvalidDitherBits(usize),
@@ -77,6 +79,9 @@ impl Display for MatrixCreationError {
             }
             MatrixCreationError::InvalidHardwareMapping(name) => {
                 write!(f, "'{name}' is not a valid hardware mapping.")
+            }
+            MatrixCreationError::InvalidLedSequence(name) => {
+                write!(f, "'{name}' is not a valid LED sequence.")
             }
             MatrixCreationError::TooManyParallelChains(max) => {
                 write!(f, "GPIO mapping only supports up to {max} parallel panels.")
@@ -147,15 +152,20 @@ impl RGBMatrix {
             HardwareMapping::from_name(&config.gpio_mapping).ok_or_else(|| {
                 MatrixCreationError::InvalidHardwareMapping(config.gpio_mapping.to_string())
             })?;
+        let led_sequence = LedSequence::from_str(&config.led_sequence)
+            .ok()
+            .ok_or_else(|| {
+                MatrixCreationError::InvalidLedSequence(config.led_sequence.to_string())
+            })?;
 
         let max_parallel = hardware_mapping.max_parallel_chains();
         if config.parallel > max_parallel {
             return Err(MatrixCreationError::TooManyParallelChains(max_parallel));
         }
 
-        let pixel_designator = PixelDesignator::from_hardware_mapping(&hardware_mapping);
+        let pixel_designator = PixelDesignator::new(&hardware_mapping, led_sequence);
         let mut shared_mapper =
-            PixelDesignatorMap::new(pixel_designator, &hardware_mapping, &config);
+            PixelDesignatorMap::new(pixel_designator, &hardware_mapping, led_sequence, &config);
 
         if let Some(mapper_name) = config.multiplexing.as_ref() {
             let mapper = get_multiplex_mapper(mapper_name.as_str());
@@ -164,6 +174,7 @@ impl RGBMatrix {
                 mapper,
                 &mut config,
                 &hardware_mapping,
+                led_sequence,
                 pixel_designator,
             );
         }
@@ -320,13 +331,15 @@ impl RGBMatrix {
         mut mapper: Box<dyn MultiplexMapper>,
         config: &mut RGBMatrixConfig,
         hardware_mapping: &HardwareMapping,
+        led_sequence: LedSequence,
         pixel_designator: PixelDesignator,
     ) -> PixelDesignatorMap {
         let old_width = shared_mapper.width();
         let old_height = shared_mapper.height();
         mapper.edit_rows_cols(&mut config.rows, &mut config.cols);
         let [new_width, new_height] = mapper.get_size_mapping(old_width, old_height);
-        let mut new_mapper = PixelDesignatorMap::new(pixel_designator, hardware_mapping, &*config);
+        let mut new_mapper =
+            PixelDesignatorMap::new(pixel_designator, hardware_mapping, led_sequence, config);
         for y in 0..new_height {
             for x in 0..new_width {
                 let [orig_x, orig_y] = mapper.map_visible_to_matrix(old_width, old_height, x, y);

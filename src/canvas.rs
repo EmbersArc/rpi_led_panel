@@ -1,7 +1,74 @@
+use std::{error::Error, str::FromStr};
+
 use crate::{
     color::ColorLookup, config::K_BIT_PLANES, gpio::Gpio, hardware_mapping::HardwareMapping,
     row_address_setter::RowAddressSetter, RGBMatrixConfig,
 };
+
+pub(crate) enum Channel {
+    First,
+    Second,
+    Third,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum LedSequence {
+    #[default]
+    Rgb,
+    Rbg,
+    Grb,
+    Gbr,
+    Brg,
+    Bgr,
+}
+
+impl FromStr for LedSequence {
+    type Err = Box<dyn Error>;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let ok = match s.to_uppercase().as_str() {
+            "RGB" => Self::Rgb,
+            "RBG" => Self::Rbg,
+            "GRB" => Self::Grb,
+            "GBR" => Self::Gbr,
+            "BRG" => Self::Brg,
+            "BGR" => Self::Bgr,
+            other => return Err(format!("Invalid LED sequence: {other}").into()),
+        };
+        Ok(ok)
+    }
+}
+
+impl LedSequence {
+    fn get_gpio(&self, channel: Channel, red_bits: u32, green_bits: u32, blue_bits: u32) -> u32 {
+        match channel {
+            Channel::First => match self {
+                LedSequence::Rgb => red_bits,
+                LedSequence::Rbg => red_bits,
+                LedSequence::Grb => green_bits,
+                LedSequence::Gbr => green_bits,
+                LedSequence::Brg => blue_bits,
+                LedSequence::Bgr => blue_bits,
+            },
+            Channel::Second => match self {
+                LedSequence::Rgb => green_bits,
+                LedSequence::Rbg => blue_bits,
+                LedSequence::Grb => red_bits,
+                LedSequence::Gbr => blue_bits,
+                LedSequence::Brg => red_bits,
+                LedSequence::Bgr => green_bits,
+            },
+            Channel::Third => match self {
+                LedSequence::Rgb => blue_bits,
+                LedSequence::Rbg => green_bits,
+                LedSequence::Grb => blue_bits,
+                LedSequence::Gbr => red_bits,
+                LedSequence::Brg => green_bits,
+                LedSequence::Bgr => red_bits,
+            },
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
 pub(crate) struct PixelDesignator {
@@ -13,13 +80,16 @@ pub(crate) struct PixelDesignator {
 }
 
 impl PixelDesignator {
-    pub(crate) fn from_hardware_mapping(hardware_mapping: &HardwareMapping) -> Self {
+    pub(crate) fn new(hardware_mapping: &HardwareMapping, sequence: LedSequence) -> Self {
         let h = hardware_mapping;
+        let r = h.panels.red_bits();
+        let g = h.panels.green_bits();
+        let b = h.panels.blue_bits();
         Self {
             gpio_word: None,
-            r_bit: h.panels.red_bits(),
-            g_bit: h.panels.green_bits(),
-            b_bit: h.panels.blue_bits(),
+            r_bit: sequence.get_gpio(Channel::First, r, g, b),
+            g_bit: sequence.get_gpio(Channel::Second, r, g, b),
+            b_bit: sequence.get_gpio(Channel::Third, r, g, b),
             mask: !0u32,
         }
     }
@@ -37,6 +107,7 @@ impl PixelDesignatorMap {
     pub(crate) fn new(
         pixel_designator: PixelDesignator,
         hardware_mapping: &HardwareMapping,
+        led_sequence: LedSequence,
         config: &RGBMatrixConfig,
     ) -> Self {
         let width = config.cols;
@@ -52,13 +123,19 @@ impl PixelDesignatorMap {
                 d.gpio_word = Some(offset);
                 let panel = y / config.rows;
                 if y - panel * config.rows < double_rows {
-                    d.r_bit = h.panels.color_bits[panel].r1;
-                    d.g_bit = h.panels.color_bits[panel].g1;
-                    d.b_bit = h.panels.color_bits[panel].b1;
+                    let r = h.panels.color_bits[panel].r1;
+                    let g = h.panels.color_bits[panel].g1;
+                    let b = h.panels.color_bits[panel].b1;
+                    d.r_bit = led_sequence.get_gpio(Channel::First, r, g, b);
+                    d.g_bit = led_sequence.get_gpio(Channel::Second, r, g, b);
+                    d.b_bit = led_sequence.get_gpio(Channel::Third, r, g, b);
                 } else {
-                    d.r_bit = h.panels.color_bits[panel].r2;
-                    d.g_bit = h.panels.color_bits[panel].g2;
-                    d.b_bit = h.panels.color_bits[panel].b2;
+                    let r = h.panels.color_bits[panel].r2;
+                    let g = h.panels.color_bits[panel].g2;
+                    let b = h.panels.color_bits[panel].b2;
+                    d.r_bit = led_sequence.get_gpio(Channel::First, r, g, b);
+                    d.g_bit = led_sequence.get_gpio(Channel::Second, r, g, b);
+                    d.b_bit = led_sequence.get_gpio(Channel::Third, r, g, b);
                 }
                 d.mask = !(d.r_bit | d.g_bit | d.b_bit);
             });

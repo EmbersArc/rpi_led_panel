@@ -954,6 +954,6 @@ pub(crate) fn get_multiplex_mapper(name: &str) -> Box<dyn MultiplexMapper> {
         "P8Outdoor1R1G1BMultiplexMapper" => Box::new(P8Outdoor1R1G1BMultiplexMapper::new()),
         "FlippedStripeMultiplexMapper" => Box::new(FlippedStripeMultiplexMapper::new()),
         "P10Outdoor32x16HalfScanMapper" => Box::new(P10Outdoor32x16HalfScanMapper::new()),
-        _ => panic!("Unknown multiplex mapper '{}'", name),
+        _ => panic!("Unknown multiplex mapper '{name}'"),
     }
 }

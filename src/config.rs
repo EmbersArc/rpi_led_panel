@@ -74,6 +74,9 @@ pub struct RGBMatrixConfig {
     /// the row address setter.
     #[argh(option, default = "String::from(\"DirectRowAddressSetter\")")]
     pub row_setter: String,
+    /// the LED sequence, Default: "RGB"
+    #[argh(option, default = "String::from(\"RGB\")")]
+    pub led_sequence: String,
 }
 
 impl RGBMatrixConfig {

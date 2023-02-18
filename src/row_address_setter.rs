@@ -19,7 +19,7 @@ pub(crate) fn get_row_address_setter(
         "DirectABCDLineRowAddressSetter" => Box::new(DirectABCDLineRowAddressSetter::new(h, c)),
         "ABCShiftRegisterRowAddressSetter" => Box::new(ABCShiftRegisterRowAddressSetter::new(h, c)),
         "SM5266RowAddressSetter" => Box::new(SM5266RowAddressSetter::new(h, c)),
-        other => panic!("Unknown row_setter: {}", other),
+        other => panic!("Unknown row_setter: {other}"),
     }
 }
 
