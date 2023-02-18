@@ -1,26 +1,53 @@
-use crate::{gpio::Gpio, HardwareMapping, RGBMatrixConfig};
+use std::{error::Error, str::FromStr};
+
+use crate::{gpio::Gpio, RGBMatrixConfig};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RowAddressSetterType {
+    Direct,
+    ShiftRegister,
+    DirectABCDLine,
+    ABCShiftRegister,
+    SM5266,
+}
+
+impl FromStr for RowAddressSetterType {
+    type Err = Box<dyn Error>;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "direct" => Ok(Self::Direct),
+            "shiftregister" => Ok(Self::ShiftRegister),
+            "directabcdline" => Ok(Self::DirectABCDLine),
+            "abcshiftregister" => Ok(Self::ABCShiftRegister),
+            "sm5266" => Ok(Self::SM5266),
+            _ => Err(format!("'{s}' is not a valid row address setter type.").into()),
+        }
+    }
+}
+
+impl RowAddressSetterType {
+    pub(crate) fn create(&self, config: &RGBMatrixConfig) -> Box<dyn RowAddressSetter> {
+        match self {
+            RowAddressSetterType::Direct => Box::new(DirectRowAddressSetter::new(config)),
+            RowAddressSetterType::ShiftRegister => {
+                Box::new(ShiftRegisterRowAddressSetter::new(config))
+            }
+            RowAddressSetterType::DirectABCDLine => {
+                Box::new(DirectABCDLineRowAddressSetter::new(config))
+            }
+            RowAddressSetterType::ABCShiftRegister => {
+                Box::new(ABCShiftRegisterRowAddressSetter::new(config))
+            }
+            RowAddressSetterType::SM5266 => Box::new(SM5266RowAddressSetter::new(config)),
+        }
+    }
+}
 
 /// Different panel types use different techniques to set the row address.
 pub(crate) trait RowAddressSetter {
     fn used_bits(&self) -> u32;
     fn set_row_address(&mut self, gpio: &mut Gpio, row: usize);
-}
-
-pub(crate) fn get_row_address_setter(
-    name: &str,
-    hardware_mapping: &HardwareMapping,
-    config: &RGBMatrixConfig,
-) -> Box<dyn RowAddressSetter> {
-    let c = config;
-    let h = hardware_mapping;
-    match name {
-        "DirectRowAddressSetter" => Box::new(DirectRowAddressSetter::new(h, c)),
-        "ShiftRegisterRowAddressSetter" => Box::new(ShiftRegisterRowAddressSetter::new(h, c)),
-        "DirectABCDLineRowAddressSetter" => Box::new(DirectABCDLineRowAddressSetter::new(h, c)),
-        "ABCShiftRegisterRowAddressSetter" => Box::new(ABCShiftRegisterRowAddressSetter::new(h, c)),
-        "SM5266RowAddressSetter" => Box::new(SM5266RowAddressSetter::new(h, c)),
-        other => panic!("Unknown row_setter: {other}"),
-    }
 }
 
 pub(crate) struct DirectRowAddressSetter {
@@ -30,10 +57,10 @@ pub(crate) struct DirectRowAddressSetter {
 }
 
 impl DirectRowAddressSetter {
-    pub(crate) fn new(hardware_mapping: &HardwareMapping, config: &RGBMatrixConfig) -> Self {
+    pub(crate) fn new(config: &RGBMatrixConfig) -> Self {
         let double_rows = config.double_rows();
 
-        let h = hardware_mapping;
+        let h = config.hardware_mapping;
 
         let mut row_mask = 0;
         row_mask |= h.a;
@@ -97,8 +124,8 @@ pub(crate) struct SM5266RowAddressSetter {
 }
 
 impl SM5266RowAddressSetter {
-    pub(crate) fn new(hardware_mapping: &HardwareMapping, config: &RGBMatrixConfig) -> Self {
-        let h = hardware_mapping;
+    pub(crate) fn new(config: &RGBMatrixConfig) -> Self {
+        let h = config.hardware_mapping;
         let mut row_mask = h.a | h.b | h.c;
         assert!(config.double_rows() <= 32); // designed for up to 1/32 panel
         if config.double_rows() > 8 {
@@ -161,8 +188,8 @@ pub(crate) struct ShiftRegisterRowAddressSetter {
 }
 
 impl ShiftRegisterRowAddressSetter {
-    pub(crate) fn new(hardware_mapping: &HardwareMapping, config: &RGBMatrixConfig) -> Self {
-        let h = hardware_mapping;
+    pub(crate) fn new(config: &RGBMatrixConfig) -> Self {
+        let h = config.hardware_mapping;
         let row_mask = h.a | h.b;
         let clock = h.a;
         let data = h.b;
@@ -210,8 +237,8 @@ pub(crate) struct ABCShiftRegisterRowAddressSetter {
 }
 
 impl ABCShiftRegisterRowAddressSetter {
-    pub(crate) fn new(hardware_mapping: &HardwareMapping, config: &RGBMatrixConfig) -> Self {
-        let h = hardware_mapping;
+    pub(crate) fn new(config: &RGBMatrixConfig) -> Self {
+        let h = config.hardware_mapping;
         let row_mask = h.a | h.c;
         let clock = h.a;
         let data = h.c;
@@ -267,8 +294,8 @@ pub(crate) struct DirectABCDLineRowAddressSetter {
 }
 
 impl DirectABCDLineRowAddressSetter {
-    pub(crate) fn new(hardware_mapping: &HardwareMapping, _config: &RGBMatrixConfig) -> Self {
-        let h = hardware_mapping;
+    pub(crate) fn new(config: &RGBMatrixConfig) -> Self {
+        let h = config.hardware_mapping;
         Self {
             row_lines: [
                 /*h.a |*/ h.b | h.c | h.d,

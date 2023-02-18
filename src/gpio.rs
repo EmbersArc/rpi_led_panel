@@ -7,7 +7,6 @@ use crate::{
     chip::PiChip,
     config::K_BIT_PLANES,
     gpio_bits,
-    hardware_mapping::HardwareMapping,
     pin_pulser::PinPulser,
     registers::{ClkRegisters, GPIOFunction, GPIORegisters, PWMRegisters, TimeRegisters},
     row_address_setter::RowAddressSetter,
@@ -57,7 +56,6 @@ impl Gpio {
     /// Initialize GPIO and loads all registers. Needs root privileges.
     pub(crate) fn new(
         chip: PiChip,
-        hardware_mapping: &HardwareMapping,
         config: &RGBMatrixConfig,
         address_setter: &dyn RowAddressSetter,
     ) -> Result<Self, GpioInitializationError> {
@@ -74,7 +72,7 @@ impl Gpio {
 
         // Tell GPIO about all bits we intend to use.
         let mut all_used_bits: u32 = 0;
-        all_used_bits |= hardware_mapping.used_bits();
+        all_used_bits |= config.hardware_mapping.used_bits();
         all_used_bits |= address_setter.used_bits();
 
         let input_bits = 0;
@@ -126,7 +124,7 @@ impl Gpio {
         });
 
         let pin_pulser = PinPulser::new(
-            hardware_mapping.output_enable,
+            config.hardware_mapping.output_enable,
             &bitplane_timings,
             &mut pwm_registers,
             &mut gpio_registers,

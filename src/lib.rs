@@ -12,8 +12,11 @@ mod rgb_matrix;
 mod row_address_setter;
 mod utils;
 
-pub use canvas::Canvas;
+pub use canvas::{Canvas, LedSequence};
 pub use chip::PiChip;
 pub use config::RGBMatrixConfig;
 pub use hardware_mapping::HardwareMapping;
+pub use init_sequence::PanelType;
+pub use multiplex_mapper::MultiplexMapperType;
 pub use rgb_matrix::RGBMatrix;
+pub use row_address_setter::RowAddressSetterType;

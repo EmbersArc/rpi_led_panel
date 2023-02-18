@@ -3,7 +3,6 @@ use std::{
     fmt::{Display, Formatter},
     fs::{write, OpenOptions},
     mem::replace,
-    str::FromStr,
     sync::mpsc::{
         channel, sync_channel, Receiver, RecvTimeoutError, Sender, SyncSender, TryRecvError,
     },
@@ -14,13 +13,10 @@ use std::{
 use thread_priority::{set_current_thread_priority, ThreadPriority};
 
 use crate::{
-    canvas::{Canvas, LedSequence, PixelDesignator, PixelDesignatorMap},
+    canvas::{Canvas, PixelDesignator, PixelDesignatorMap},
     chip::PiChip,
     gpio::{Gpio, GpioInitializationError},
-    hardware_mapping::HardwareMapping,
-    init_sequence::InitializationSequence,
-    multiplex_mapper::{get_multiplex_mapper, MultiplexMapper},
-    row_address_setter::get_row_address_setter,
+    multiplex_mapper::MultiplexMapper,
     utils::{set_thread_affinity, FrameRateMonitor},
     RGBMatrixConfig,
 };
@@ -54,12 +50,8 @@ fn initialize_update_thread(chip: &PiChip) {
 
 #[derive(Debug)]
 pub enum MatrixCreationError {
-    InvalidChipName(String),
     ChipDeterminationError,
-    InvalidHardwareMapping(String),
-    InvalidLedSequence(String),
     TooManyParallelChains(usize),
-    InvalidInitializationSequence(String),
     InvalidDitherBits(usize),
     ThreadTimedOut,
     GpioError(GpioInitializationError),
@@ -71,23 +63,11 @@ impl Error for MatrixCreationError {}
 impl Display for MatrixCreationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            MatrixCreationError::InvalidChipName(name) => {
-                write!(f, "'{name}' is not a valid chip name")
-            }
             MatrixCreationError::ChipDeterminationError => {
                 f.write_str("Failed to automatically determine Raspberry Pi model.")
             }
-            MatrixCreationError::InvalidHardwareMapping(name) => {
-                write!(f, "'{name}' is not a valid hardware mapping.")
-            }
-            MatrixCreationError::InvalidLedSequence(name) => {
-                write!(f, "'{name}' is not a valid LED sequence.")
-            }
             MatrixCreationError::TooManyParallelChains(max) => {
                 write!(f, "GPIO mapping only supports up to {max} parallel panels.")
-            }
-            MatrixCreationError::InvalidInitializationSequence(name) => {
-                write!(f, "Initialization sequence '{name}' is not supported.")
             }
             MatrixCreationError::InvalidDitherBits(value) => {
                 write!(f, "Unsupported dither bits '{value}'.")
@@ -141,53 +121,25 @@ impl RGBMatrix {
             .open("/dev/mem")
             .map_err(|_| MatrixCreationError::MemoryAccessError)?;
 
-        let chip = if let Some(name) = config.pi_chip.as_ref() {
-            PiChip::from_name(name)
-                .ok_or_else(|| MatrixCreationError::InvalidChipName(name.to_string()))
+        let chip = if let Some(chip) = config.pi_chip {
+            chip
         } else {
-            PiChip::determine().ok_or(MatrixCreationError::ChipDeterminationError)
-        }?;
+            PiChip::determine().ok_or(MatrixCreationError::ChipDeterminationError)?
+        };
 
-        let hardware_mapping =
-            HardwareMapping::from_name(&config.gpio_mapping).ok_or_else(|| {
-                MatrixCreationError::InvalidHardwareMapping(config.gpio_mapping.to_string())
-            })?;
-        let led_sequence = LedSequence::from_str(&config.led_sequence)
-            .ok()
-            .ok_or_else(|| {
-                MatrixCreationError::InvalidLedSequence(config.led_sequence.to_string())
-            })?;
-
-        let max_parallel = hardware_mapping.max_parallel_chains();
+        let max_parallel = config.hardware_mapping.max_parallel_chains();
         if config.parallel > max_parallel {
             return Err(MatrixCreationError::TooManyParallelChains(max_parallel));
         }
 
-        let pixel_designator = PixelDesignator::new(&hardware_mapping, led_sequence);
-        let mut shared_mapper =
-            PixelDesignatorMap::new(pixel_designator, &hardware_mapping, led_sequence, &config);
+        let pixel_designator = PixelDesignator::new(&config.hardware_mapping, config.led_sequence);
+        let mut shared_mapper = PixelDesignatorMap::new(pixel_designator, &config);
 
-        if let Some(mapper_name) = config.multiplexing.as_ref() {
-            let mapper = get_multiplex_mapper(mapper_name.as_str());
-            shared_mapper = Self::apply_pixel_mapper(
-                shared_mapper,
-                mapper,
-                &mut config,
-                &hardware_mapping,
-                led_sequence,
-                pixel_designator,
-            );
+        if let Some(mapper_type) = config.multiplexing.as_ref() {
+            let mapper = mapper_type.create();
+            shared_mapper =
+                Self::apply_pixel_mapper(shared_mapper, mapper, &mut config, pixel_designator);
         }
-
-        let initialization_sequence = config
-            .panel_type
-            .as_deref()
-            .map(|name| {
-                InitializationSequence::from_name(name).ok_or_else(|| {
-                    MatrixCreationError::InvalidInitializationSequence(name.to_string())
-                })
-            })
-            .transpose()?;
 
         let dither_start_bits = match config.dither_bits {
             0 => [0, 0, 0, 0],
@@ -212,23 +164,21 @@ impl RGBMatrix {
         let thread_handle = spawn(move || {
             initialize_update_thread(&chip);
 
-            let mut address_setter =
-                get_row_address_setter(config.row_setter.as_str(), &hardware_mapping, &config);
+            let mut address_setter = config.row_setter.create(&config);
 
-            let mut gpio =
-                match Gpio::new(chip, &hardware_mapping, &config, address_setter.as_ref()) {
-                    Ok(gpio) => gpio,
-                    Err(error) => {
-                        thread_start_result_sender
-                            .send(Err(MatrixCreationError::GpioError(error)))
-                            .expect("Could not send to main thread.");
-                        return;
-                    }
-                };
+            let mut gpio = match Gpio::new(chip, &config, address_setter.as_ref()) {
+                Ok(gpio) => gpio,
+                Err(error) => {
+                    thread_start_result_sender
+                        .send(Err(MatrixCreationError::GpioError(error)))
+                        .expect("Could not send to main thread.");
+                    return;
+                }
+            };
 
             // Run the initialization sequence if necessary.
-            if let Some(sequence) = initialization_sequence {
-                sequence.run(&mut gpio, &hardware_mapping, config.cols);
+            if let Some(panel_type) = config.panel_type {
+                panel_type.run_init_sequence(&mut gpio, &config);
             }
 
             let mut last_gpio_inputs: u32 = 0;
@@ -238,7 +188,9 @@ impl RGBMatrix {
 
             let frame_time_target_us = (1_000_000.0 / config.refresh_rate as f64) as u64;
 
-            let color_clk_mask = hardware_mapping.get_color_clock_mask(config.parallel);
+            let color_clk_mask = config
+                .hardware_mapping
+                .get_color_clock_mask(config.parallel);
 
             let enabled_input_bits = gpio.request_enabled_inputs(requested_inputs);
             thread_start_result_sender
@@ -283,7 +235,7 @@ impl RGBMatrix {
 
                 thread_canvas.dump_to_matrix(
                     &mut gpio,
-                    &hardware_mapping,
+                    &config.hardware_mapping,
                     address_setter.as_mut(),
                     dither_start_bits[dither_low_bit_sequence % dither_start_bits.len()],
                     color_clk_mask,
@@ -302,7 +254,7 @@ impl RGBMatrix {
             thread_canvas.fill(0, 0, 0);
             thread_canvas.dump_to_matrix(
                 &mut gpio,
-                &hardware_mapping,
+                &config.hardware_mapping,
                 address_setter.as_mut(),
                 0,
                 color_clk_mask,
@@ -330,16 +282,13 @@ impl RGBMatrix {
         shared_mapper: PixelDesignatorMap,
         mut mapper: Box<dyn MultiplexMapper>,
         config: &mut RGBMatrixConfig,
-        hardware_mapping: &HardwareMapping,
-        led_sequence: LedSequence,
         pixel_designator: PixelDesignator,
     ) -> PixelDesignatorMap {
         let old_width = shared_mapper.width();
         let old_height = shared_mapper.height();
         mapper.edit_rows_cols(&mut config.rows, &mut config.cols);
         let [new_width, new_height] = mapper.get_size_mapping(old_width, old_height);
-        let mut new_mapper =
-            PixelDesignatorMap::new(pixel_designator, hardware_mapping, led_sequence, config);
+        let mut new_mapper = PixelDesignatorMap::new(pixel_designator, config);
         for y in 0..new_height {
             for x in 0..new_width {
                 let [orig_x, orig_y] = mapper.map_visible_to_matrix(old_width, old_height, x, y);

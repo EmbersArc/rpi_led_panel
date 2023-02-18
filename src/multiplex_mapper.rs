@@ -1,3 +1,88 @@
+use std::{error::Error, str::FromStr};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MultiplexMapperType {
+    Stripe,
+    Checkered,
+    Spiral,
+    ZStripe08,
+    ZStripe44,
+    ZStripe80,
+    Coreman,
+    Kaler2Scan,
+    P10Z,
+    QiangLiQ8,
+    InversedZStripe,
+    P10Outdoor1R1G1B1,
+    P10Outdoor1R1G1B2,
+    P10Outdoor1R1G1B3,
+    P10Coreman,
+    P8Outdoor1R1G1B,
+    FlippedStripe,
+    P10Outdoor32x16HalfScan,
+}
+
+impl FromStr for MultiplexMapperType {
+    type Err = Box<dyn Error>;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Stripe" => Ok(Self::Stripe),
+            "Checkered" => Ok(Self::Checkered),
+            "Spiral" => Ok(Self::Spiral),
+            "ZStripe08" => Ok(Self::ZStripe08),
+            "ZStripe44" => Ok(Self::ZStripe44),
+            "ZStripe80" => Ok(Self::ZStripe80),
+            "Coreman" => Ok(Self::Coreman),
+            "Kaler2Scan" => Ok(Self::Kaler2Scan),
+            "P10Z" => Ok(Self::P10Z),
+            "QiangLiQ8" => Ok(Self::QiangLiQ8),
+            "InversedZStripe" => Ok(Self::InversedZStripe),
+            "P10Outdoor1R1G1B1" => Ok(Self::P10Outdoor1R1G1B1),
+            "P10Outdoor1R1G1B2" => Ok(Self::P10Outdoor1R1G1B2),
+            "P10Outdoor1R1G1B3" => Ok(Self::P10Outdoor1R1G1B3),
+            "P10Coreman" => Ok(Self::P10Coreman),
+            "P8Outdoor1R1G1B" => Ok(Self::P8Outdoor1R1G1B),
+            "FlippedStripe" => Ok(Self::FlippedStripe),
+            "P10Outdoor32x16HalfScan" => Ok(Self::P10Outdoor32x16HalfScan),
+            other => Err(format!("'{other}' is not a valid GPIO mapping.").into()),
+        }
+    }
+}
+
+impl MultiplexMapperType {
+    pub(crate) fn create(&self) -> Box<dyn MultiplexMapper> {
+        match self {
+            MultiplexMapperType::Stripe => Box::new(StripeMultiplexMapper::new()),
+            MultiplexMapperType::Checkered => Box::new(CheckeredMultiplexMapper::new()),
+            MultiplexMapperType::Spiral => Box::new(SpiralMultiplexMapper::new()),
+            MultiplexMapperType::ZStripe08 => Box::new(ZStripeMultiplexMapper::new(0, 8)),
+            MultiplexMapperType::ZStripe44 => Box::new(ZStripeMultiplexMapper::new(4, 4)),
+            MultiplexMapperType::ZStripe80 => Box::new(ZStripeMultiplexMapper::new(8, 0)),
+            MultiplexMapperType::Coreman => Box::new(CoremanMapper::new()),
+            MultiplexMapperType::Kaler2Scan => Box::new(Kaler2ScanMapper::new()),
+            MultiplexMapperType::P10Z => Box::new(P10MapperZ::new()),
+            MultiplexMapperType::QiangLiQ8 => Box::new(QiangLiQ8::new()),
+            MultiplexMapperType::InversedZStripe => Box::new(InversedZStripe::new()),
+            MultiplexMapperType::P10Outdoor1R1G1B1 => {
+                Box::new(P10Outdoor1R1G1BMultiplexMapper1::new())
+            }
+            MultiplexMapperType::P10Outdoor1R1G1B2 => {
+                Box::new(P10Outdoor1R1G1BMultiplexMapper2::new())
+            }
+            MultiplexMapperType::P10Outdoor1R1G1B3 => {
+                Box::new(P10Outdoor1R1G1BMultiplexMapper3::new())
+            }
+            MultiplexMapperType::P10Coreman => Box::new(P10CoremanMapper::new()),
+            MultiplexMapperType::P8Outdoor1R1G1B => Box::new(P8Outdoor1R1G1BMultiplexMapper::new()),
+            MultiplexMapperType::FlippedStripe => Box::new(FlippedStripeMultiplexMapper::new()),
+            MultiplexMapperType::P10Outdoor32x16HalfScan => {
+                Box::new(P10Outdoor32x16HalfScanMapper::new())
+            }
+        }
+    }
+}
+
 pub(crate) trait MultiplexMapper {
     fn panel_rows(&self) -> usize;
     fn panel_cols(&self) -> usize;
@@ -931,29 +1016,5 @@ impl MultiplexMapper for P8Outdoor1R1G1BMultiplexMapper {
             + P8_TILE_HEIGHT * (1 - y / (P8_TILE_HEIGHT * 2))
             - 1;
         [matrix_x, matrix_y]
-    }
-}
-
-pub(crate) fn get_multiplex_mapper(name: &str) -> Box<dyn MultiplexMapper> {
-    match name {
-        "StripeMultiplexMapper" => Box::new(StripeMultiplexMapper::new()),
-        "CheckeredMultiplexMapper" => Box::new(CheckeredMultiplexMapper::new()),
-        "SpiralMultiplexMapper" => Box::new(SpiralMultiplexMapper::new()),
-        "ZStripeMultiplexMapper08" => Box::new(ZStripeMultiplexMapper::new(0, 8)),
-        "ZStripeMultiplexMapper44" => Box::new(ZStripeMultiplexMapper::new(4, 4)),
-        "ZStripeMultiplexMapper80" => Box::new(ZStripeMultiplexMapper::new(8, 0)),
-        "CoremanMapper" => Box::new(CoremanMapper::new()),
-        "Kaler2ScanMapper" => Box::new(Kaler2ScanMapper::new()),
-        "P10MapperZ" => Box::new(P10MapperZ::new()),
-        "QiangLiQ8" => Box::new(QiangLiQ8::new()),
-        "InversedZStripe" => Box::new(InversedZStripe::new()),
-        "P10Outdoor1R1G1BMultiplexMapper1" => Box::new(P10Outdoor1R1G1BMultiplexMapper1::new()),
-        "P10Outdoor1R1G1BMultiplexMapper2" => Box::new(P10Outdoor1R1G1BMultiplexMapper2::new()),
-        "P10Outdoor1R1G1BMultiplexMapper3" => Box::new(P10Outdoor1R1G1BMultiplexMapper3::new()),
-        "P10CoremanMapper" => Box::new(P10CoremanMapper::new()),
-        "P8Outdoor1R1G1BMultiplexMapper" => Box::new(P8Outdoor1R1G1BMultiplexMapper::new()),
-        "FlippedStripeMultiplexMapper" => Box::new(FlippedStripeMultiplexMapper::new()),
-        "P10Outdoor32x16HalfScanMapper" => Box::new(P10Outdoor32x16HalfScanMapper::new()),
-        _ => panic!("Unknown multiplex mapper '{name}'"),
     }
 }

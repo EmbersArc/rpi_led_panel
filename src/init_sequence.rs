@@ -1,27 +1,36 @@
-use crate::{gpio::Gpio, gpio_bits, HardwareMapping};
+use std::{error::Error, str::FromStr};
 
-pub(crate) enum InitializationSequence {
+use crate::{gpio::Gpio, gpio_bits, RGBMatrixConfig};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PanelType {
     FM6126,
     FM6127,
 }
 
-impl InitializationSequence {
-    pub(crate) fn from_name(name: &str) -> Option<Self> {
-        match name.to_lowercase().as_str() {
-            "fm6126" => Some(Self::FM6126),
-            "fm6127" => Some(Self::FM6127),
-            _ => None,
+impl FromStr for PanelType {
+    type Err = Box<dyn Error>;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_uppercase().as_str() {
+            "FM6126" => Ok(Self::FM6126),
+            "FM6127" => Ok(Self::FM6127),
+            _ => Err(format!("'{s}' is not a valid panel type.").into()),
         }
     }
+}
 
-    pub(crate) fn run(&self, gpio: &mut Gpio, hm: &HardwareMapping, columns: usize) {
+impl PanelType {
+    pub(crate) fn run_init_sequence(&self, gpio: &mut Gpio, config: &RGBMatrixConfig) {
         match self {
-            Self::FM6126 => Self::init_fm6126(gpio, hm, columns),
-            Self::FM6127 => Self::init_fm6127(gpio, hm, columns),
+            Self::FM6126 => Self::init_fm6126(gpio, config),
+            Self::FM6127 => Self::init_fm6127(gpio, config),
         }
     }
 
-    fn init_fm6126(gpio: &mut Gpio, hm: &HardwareMapping, columns: usize) {
+    fn init_fm6126(gpio: &mut Gpio, config: &RGBMatrixConfig) {
+        let hm = &config.hardware_mapping;
+        let columns = config.cols;
         let bits_on = hm.panels.used_bits() | hm.a;
         let bits_off = hm.a;
         let mask = bits_on | hm.strobe;
@@ -64,7 +73,9 @@ impl InitializationSequence {
 
     /// The FM6217 is very similar to the FM6216. FM6217 adds Register 3 to allow for automatic bad pixel
     /// suppression.
-    fn init_fm6127(gpio: &mut Gpio, hm: &HardwareMapping, columns: usize) {
+    fn init_fm6127(gpio: &mut Gpio, config: &RGBMatrixConfig) {
+        let hm = &config.hardware_mapping;
+        let columns = config.cols;
         let bits_on = hm.panels.color_bits[0].used_bits() | hm.a;
         let bits_off = 0;
         let mask = bits_on | hm.strobe;

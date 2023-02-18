@@ -1,5 +1,10 @@
 use argh::FromArgs;
 
+use crate::{
+    canvas::LedSequence, init_sequence::PanelType, multiplex_mapper::MultiplexMapperType,
+    row_address_setter::RowAddressSetterType, HardwareMapping, PiChip,
+};
+
 /// Typically, a Hub75 panel is split in two half displays, so that a 1:16 multiplexing actually multiplexes
 /// over two half displays and gives 32 lines.
 pub(crate) const SUB_PANELS: usize = 2;
@@ -12,9 +17,9 @@ pub(crate) const K_BIT_PLANES: usize = 11;
 /// Configuration for an RGB matrix panel controller.
 #[derive(FromArgs, Debug, PartialEq, Eq, Hash)]
 pub struct RGBMatrixConfig {
-    /// the display wiring e.g. "adafruit_hat" or "adafruit_hat_pwm". Default: "adafruit_hat_pwm"
-    #[argh(option, default = "String::from(\"adafruit_hat_pwm\")")]
-    pub gpio_mapping: String,
+    /// the display wiring e.g. "AdafruitHat" or "AdafruitHatPwm". Default: "AdafruitHatPwm"
+    #[argh(option, default = "HardwareMapping::adafruit_hat_pwm()")]
+    pub hardware_mapping: HardwareMapping,
     /// the number of display rows. Default: 64
     #[argh(option, default = "64")]
     pub rows: usize,
@@ -26,7 +31,7 @@ pub struct RGBMatrixConfig {
     pub refresh_rate: usize,
     /// the Raspberry Pi chip model e.g. "BCM2711", Default: automatic
     #[argh(option)]
-    pub pi_chip: Option<String>,
+    pub pi_chip: Option<PiChip>,
     /// the LEDs can only be switched on or off, so the shaded brightness perception is achieved via PWM
     /// (Pulse Width Modulation). In order to get a good 8 bit per color resolution (24 bit RGB), the 11 bits
     /// default per color are good because our eyes are actually perceiving brightness logarithmically, so we
@@ -67,20 +72,42 @@ pub struct RGBMatrixConfig {
     /// typically left empty, but some panels need a particular initialization sequence. This can be e.g.
     /// "FM6126A" for that particular panel type.
     #[argh(option)]
-    pub panel_type: Option<String>,
+    pub panel_type: Option<PanelType>,
     /// the kind of multiplexing mapper.
     #[argh(option)]
-    pub multiplexing: Option<String>,
+    pub multiplexing: Option<MultiplexMapperType>,
     /// the row address setter.
-    #[argh(option, default = "String::from(\"DirectRowAddressSetter\")")]
-    pub row_setter: String,
+    #[argh(option, default = "RowAddressSetterType::Direct")]
+    pub row_setter: RowAddressSetterType,
     /// the LED sequence, Default: "RGB"
-    #[argh(option, default = "String::from(\"RGB\")")]
-    pub led_sequence: String,
+    #[argh(option, default = "LedSequence::Rgb")]
+    pub led_sequence: LedSequence,
 }
 
 impl RGBMatrixConfig {
     pub(crate) const fn double_rows(&self) -> usize {
         self.rows / SUB_PANELS
+    }
+}
+
+impl Default for RGBMatrixConfig {
+    fn default() -> Self {
+        Self {
+            hardware_mapping: HardwareMapping::adafruit_hat_pwm(),
+            rows: 64,
+            cols: 64,
+            refresh_rate: 120,
+            pi_chip: None,
+            pwm_bits: 11,
+            pwm_lsb_nanoseconds: 130,
+            slowdown: None,
+            interlaced: false,
+            dither_bits: 0,
+            parallel: 1,
+            panel_type: None,
+            multiplexing: None,
+            row_setter: RowAddressSetterType::Direct,
+            led_sequence: LedSequence::Rgb,
+        }
     }
 }

@@ -1,8 +1,8 @@
-use std::ops::BitOr;
+use std::{error::Error, ops::BitOr, str::FromStr};
 
 use crate::gpio_bits;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct ColorBits {
     pub(crate) r1: u32,
     pub(crate) g1: u32,
@@ -41,7 +41,7 @@ impl ColorBits {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct Panels {
     pub(crate) color_bits: [ColorBits; 6],
 }
@@ -73,7 +73,7 @@ impl Panels {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct HardwareMapping {
     pub(crate) output_enable: u32,
     pub(crate) clock: u32,
@@ -88,19 +88,23 @@ pub struct HardwareMapping {
     pub(crate) panels: Panels,
 }
 
-impl HardwareMapping {
-    pub fn from_name(name: &str) -> Option<Self> {
-        match name {
-            "adafruit_hat" => Some(Self::adafruit_hat()),
-            "adafruit_hat_pwm" => Some(Self::adafruit_hat_pwm()),
-            "regular" => Some(Self::regular()),
-            "regular_pi1" => Some(Self::regular_pi1()),
-            "classic" => Some(Self::classic()),
-            "classic_pi1" => Some(Self::classic_pi1()),
-            _ => None,
+impl FromStr for HardwareMapping {
+    type Err = Box<dyn Error>;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "AdafruitHat" => Ok(Self::adafruit_hat()),
+            "AdafruitHatPwm" => Ok(Self::adafruit_hat_pwm()),
+            "Regular" => Ok(Self::regular()),
+            "RegularPi1" => Ok(Self::regular_pi1()),
+            "Classic" => Ok(Self::classic()),
+            "ClassicPi1" => Ok(Self::classic_pi1()),
+            _ => Err(format!("'{s}' is not a valid GPIO mapping.").into()),
         }
     }
+}
 
+impl HardwareMapping {
     pub(crate) fn used_bits(&self) -> u32 {
         self.output_enable | self.clock | self.strobe | self.panels.used_bits()
     }

@@ -1,4 +1,4 @@
-use std::fs::read_to_string;
+use std::{error::Error, fs::read_to_string, str::FromStr};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PiChip {
@@ -10,16 +10,20 @@ pub enum PiChip {
     BCM2711,
 }
 
-impl PiChip {
-    pub fn from_name(name: &str) -> Option<Self> {
-        match name.to_uppercase().as_str() {
-            "BCM2708" | "BCM2835" => Some(Self::BCM2708),
-            "BCM2709" | "BCM2836" | "BCM2837" => Some(Self::BCM2709),
-            "BCM2711" => Some(Self::BCM2711),
-            _ => None,
+impl FromStr for PiChip {
+    type Err = Box<dyn Error>;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_uppercase().as_str() {
+            "BCM2708" | "BCM2835" => Ok(Self::BCM2708),
+            "BCM2709" | "BCM2836" | "BCM2837" => Ok(Self::BCM2709),
+            "BCM2711" => Ok(Self::BCM2711),
+            _ => Err(format!("'{s}' is not a valid chip model.").into()),
         }
     }
+}
 
+impl PiChip {
     /// Try to automatically determine the model.
     pub fn determine() -> Option<Self> {
         // https://www.raspberrypi.org/documentation/hardware/raspberrypi/revision-codes/README.md

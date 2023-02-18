@@ -104,16 +104,11 @@ pub(crate) struct PixelDesignatorMap {
 }
 
 impl PixelDesignatorMap {
-    pub(crate) fn new(
-        pixel_designator: PixelDesignator,
-        hardware_mapping: &HardwareMapping,
-        led_sequence: LedSequence,
-        config: &RGBMatrixConfig,
-    ) -> Self {
+    pub(crate) fn new(pixel_designator: PixelDesignator, config: &RGBMatrixConfig) -> Self {
         let width = config.cols;
         let height = config.rows;
         let mut buffer = vec![pixel_designator; width * height];
-        let h = hardware_mapping;
+        let h = config.hardware_mapping;
         let double_rows = config.double_rows();
         (0..height).for_each(|y| {
             (0..width).for_each(|x| {
@@ -126,16 +121,16 @@ impl PixelDesignatorMap {
                     let r = h.panels.color_bits[panel].r1;
                     let g = h.panels.color_bits[panel].g1;
                     let b = h.panels.color_bits[panel].b1;
-                    d.r_bit = led_sequence.get_gpio(Channel::First, r, g, b);
-                    d.g_bit = led_sequence.get_gpio(Channel::Second, r, g, b);
-                    d.b_bit = led_sequence.get_gpio(Channel::Third, r, g, b);
+                    d.r_bit = config.led_sequence.get_gpio(Channel::First, r, g, b);
+                    d.g_bit = config.led_sequence.get_gpio(Channel::Second, r, g, b);
+                    d.b_bit = config.led_sequence.get_gpio(Channel::Third, r, g, b);
                 } else {
                     let r = h.panels.color_bits[panel].r2;
                     let g = h.panels.color_bits[panel].g2;
                     let b = h.panels.color_bits[panel].b2;
-                    d.r_bit = led_sequence.get_gpio(Channel::First, r, g, b);
-                    d.g_bit = led_sequence.get_gpio(Channel::Second, r, g, b);
-                    d.b_bit = led_sequence.get_gpio(Channel::Third, r, g, b);
+                    d.r_bit = config.led_sequence.get_gpio(Channel::First, r, g, b);
+                    d.g_bit = config.led_sequence.get_gpio(Channel::Second, r, g, b);
+                    d.b_bit = config.led_sequence.get_gpio(Channel::Third, r, g, b);
                 }
                 d.mask = !(d.r_bit | d.g_bit | d.b_bit);
             });
