@@ -66,6 +66,9 @@ pub struct RGBMatrixConfig {
     /// probably for Raspberry Pi 1 or Pi Zero. Default: 0 (no dithering)
     #[argh(option, default = "0")]
     pub dither_bits: usize,
+    /// number of daisy-chained panels. Default: 1
+    #[argh(option, default = "1")]
+    pub chain_length: usize,
     /// how many chains to run in parallel. Default: 1
     #[argh(option, default = "1")]
     pub parallel: usize,
@@ -103,6 +106,7 @@ impl Default for RGBMatrixConfig {
             slowdown: None,
             interlaced: false,
             dither_bits: 0,
+            chain_length: 1,
             parallel: 1,
             panel_type: None,
             multiplexing: None,

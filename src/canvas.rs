@@ -105,8 +105,8 @@ pub(crate) struct PixelDesignatorMap {
 
 impl PixelDesignatorMap {
     pub(crate) fn new(pixel_designator: PixelDesignator, config: &RGBMatrixConfig) -> Self {
-        let width = config.cols;
-        let height = config.rows;
+        let width = config.cols * config.chain_length;
+        let height = config.rows * config.parallel;
         let mut buffer = vec![pixel_designator; width * height];
         let h = config.hardware_mapping;
         let double_rows = config.double_rows();
@@ -114,7 +114,7 @@ impl PixelDesignatorMap {
             (0..width).for_each(|x| {
                 let position = y * width + x;
                 let d = &mut buffer[position];
-                let offset = (y % double_rows) * (config.cols * K_BIT_PLANES) + x;
+                let offset = (y % double_rows) * (width * K_BIT_PLANES) + x;
                 d.gpio_word = Some(offset);
                 let panel = y / config.rows;
                 if y - panel * config.rows < double_rows {
@@ -182,12 +182,14 @@ pub struct Canvas {
 impl Canvas {
     pub(crate) fn new(config: &RGBMatrixConfig, shared_mapper: PixelDesignatorMap) -> Self {
         let color_lookup = ColorLookup::new_cie1931();
+        let rows = config.rows * config.parallel;
+        let cols = config.cols * config.chain_length;
         let double_rows = config.double_rows();
         Self {
-            rows: config.rows,
-            cols: config.cols,
+            rows,
+            cols,
             double_rows,
-            bitplane_buffer: vec![0u32; double_rows * config.cols * K_BIT_PLANES],
+            bitplane_buffer: vec![0u32; double_rows * cols * K_BIT_PLANES],
             shared_mapper,
             pwm_bits: config.pwm_bits,
             brightness: 100,
