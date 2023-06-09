@@ -17,7 +17,7 @@ use crate::{
     chip::PiChip,
     gpio::{Gpio, GpioInitializationError},
     multiplex_mapper::MultiplexMapper,
-    utils::{set_thread_affinity, FrameRateMonitor},
+    utils::{set_thread_affinity, FrameRateMonitor, linux_has_isol_cpu},
     RGBMatrixConfig,
 };
 
@@ -26,20 +26,27 @@ fn initialize_update_thread(chip: &PiChip) {
     let last_core_id = chip.num_cores() - 1;
     set_thread_affinity(last_core_id);
 
+    // If the user has not setup isolcpus, let them know about the performance improvement.
+    if chip.num_cores() > 1 && !linux_has_isol_cpu(last_core_id) {
+        eprintln!(
+            "Suggestion: to slightly improve display update, add\n\tisolcpus={last_core_id}\nat the end of /boot/cmdline.txt and reboot"
+        );
+    }
+
     // Disable realtime throttling.
     if chip.num_cores() > 1 && write("/proc/sys/kernel/sched_rt_runtime_us", "999000").is_err() {
         eprintln!("Could not disable realtime throttling");
     }
 
-    // Set the core to performance mode.
+    // Set the last core to performance mode.
     if chip.num_cores() > 1
         && write(
-            "/sys/devices/system/cpu/cpu3/cpufreq/scaling_governor",
+            format!("/sys/devices/system/cpu/cpu{last_core_id}/cpufreq/scaling_governor"),
             "performance",
         )
         .is_err()
     {
-        eprintln!("Could not set core 4 to performance mode.");
+        eprintln!("Could not set core {} to performance mode.", last_core_id + 1);
     }
 
     // Set the highest thread priority.
