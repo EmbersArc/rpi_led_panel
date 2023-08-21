@@ -17,7 +17,7 @@ use crate::{
     chip::PiChip,
     gpio::{Gpio, GpioInitializationError},
     multiplex_mapper::MultiplexMapper,
-    utils::{set_thread_affinity, FrameRateMonitor, linux_has_isol_cpu},
+    utils::{linux_has_isol_cpu, set_thread_affinity, FrameRateMonitor},
     RGBMatrixConfig,
 };
 
@@ -46,7 +46,10 @@ fn initialize_update_thread(chip: &PiChip) {
         )
         .is_err()
     {
-        eprintln!("Could not set core {} to performance mode.", last_core_id + 1);
+        eprintln!(
+            "Could not set core {} to performance mode.",
+            last_core_id + 1
+        );
     }
 
     // Set the highest thread priority.
@@ -299,7 +302,7 @@ impl RGBMatrix {
         for y in 0..new_height {
             for x in 0..new_width {
                 let [orig_x, orig_y] = mapper.map_visible_to_matrix(old_width, old_height, x, y);
-                if !(0..orig_x).contains(&old_width) || !(0..orig_y).contains(&old_height) {
+                if orig_x >= old_width || orig_y >= old_height {
                     eprintln!("Error in pixel mapper"); // TODO
                     continue;
                 }
