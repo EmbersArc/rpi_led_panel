@@ -146,7 +146,8 @@ impl RGBMatrix {
         let mut shared_mapper = PixelDesignatorMap::new(pixel_designator, &config);
 
         if let Some(mapper_type) = config.multiplexing.as_ref() {
-            let mapper = mapper_type.create();
+            let mut mapper = mapper_type.create();
+            mapper.edit_rows_cols(&mut config.rows, &mut config.cols);
             shared_mapper =
                 Self::apply_pixel_mapper(shared_mapper, mapper, &mut config, pixel_designator);
         }
@@ -290,13 +291,12 @@ impl RGBMatrix {
 
     fn apply_pixel_mapper(
         shared_mapper: PixelDesignatorMap,
-        mut mapper: Box<dyn MultiplexMapper>,
+        mapper: Box<dyn MultiplexMapper>,
         config: &mut RGBMatrixConfig,
         pixel_designator: PixelDesignator,
     ) -> PixelDesignatorMap {
         let old_width = shared_mapper.width();
         let old_height = shared_mapper.height();
-        mapper.edit_rows_cols(&mut config.rows, &mut config.cols);
         let [new_width, new_height] = mapper.get_size_mapping(old_width, old_height);
         let mut new_mapper = PixelDesignatorMap::new(pixel_designator, config);
         for y in 0..new_height {
