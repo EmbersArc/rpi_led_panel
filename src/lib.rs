@@ -7,6 +7,7 @@ mod hardware_mapping;
 mod init_sequence;
 mod multiplex_mapper;
 mod pin_pulser;
+mod pixel_mapper;
 mod registers;
 mod rgb_matrix;
 mod row_address_setter;
