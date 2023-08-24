@@ -1,5 +1,9 @@
 use crate::multiplex_mapper::MultiplexMapper;
 
+/// A pixel mapper is a way for you to map pixels of LED matrixes to a different
+/// layout. If you have an implementation of a PixelMapper, you can give it
+/// to the RGBMatrix::apply_pixel_mapper(), which then presents you with a canvas
+/// that has the new "visible width" and "visible height".
 pub(crate) trait PixelMapper {
     /// Given a underlying matrix (width, height), returns the
     /// visible (width, height) after the mapping.
