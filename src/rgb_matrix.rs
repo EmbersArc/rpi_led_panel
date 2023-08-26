@@ -16,7 +16,7 @@ use crate::{
     canvas::{Canvas, PixelDesignator, PixelDesignatorMap},
     chip::PiChip,
     gpio::{Gpio, GpioInitializationError},
-    multiplex_mapper::MultiplexMapper,
+    pixel_mapper::{MultiplexMapperWrapper, PixelMapper},
     utils::{linux_has_isol_cpu, set_thread_affinity, FrameRateMonitor},
     RGBMatrixConfig,
 };
@@ -148,6 +148,7 @@ impl RGBMatrix {
         if let Some(mapper_type) = config.multiplexing.as_ref() {
             let mut mapper = mapper_type.create();
             mapper.edit_rows_cols(&mut config.rows, &mut config.cols);
+            let mapper = Box::new(MultiplexMapperWrapper(mapper));
             shared_mapper =
                 Self::apply_pixel_mapper(shared_mapper, mapper, &mut config, pixel_designator);
         }
@@ -291,7 +292,7 @@ impl RGBMatrix {
 
     fn apply_pixel_mapper(
         shared_mapper: PixelDesignatorMap,
-        mapper: Box<dyn MultiplexMapper>,
+        mapper: Box<dyn PixelMapper>,
         config: &mut RGBMatrixConfig,
         pixel_designator: PixelDesignator,
     ) -> PixelDesignatorMap {
