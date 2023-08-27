@@ -16,7 +16,7 @@ use crate::{
     canvas::{Canvas, PixelDesignator, PixelDesignatorMap},
     chip::PiChip,
     gpio::{Gpio, GpioInitializationError},
-    pixel_mapper::{MultiplexMapperWrapper, PixelMapper},
+    pixel_mapper::{MultiplexMapperWrapper, NamedPixelMapperWrapper, PixelMapper},
     utils::{linux_has_isol_cpu, set_thread_affinity, FrameRateMonitor},
     RGBMatrixConfig,
 };
@@ -145,12 +145,21 @@ impl RGBMatrix {
         let pixel_designator = PixelDesignator::new(&config.hardware_mapping, config.led_sequence);
         let mut shared_mapper = PixelDesignatorMap::new(pixel_designator, &config);
 
+        // Apply the mapping for the panels first.
         if let Some(mapper_type) = config.multiplexing.as_ref() {
             let mut mapper = mapper_type.create();
             mapper.edit_rows_cols(&mut config.rows, &mut config.cols);
-            let mapper = Box::new(MultiplexMapperWrapper(mapper));
+            let mapper = MultiplexMapperWrapper(mapper);
             shared_mapper =
-                Self::apply_pixel_mapper(shared_mapper, mapper, &mut config, pixel_designator);
+                Self::apply_pixel_mapper(shared_mapper, mapper, &config, pixel_designator);
+        }
+
+        // Apply higher level mappers that might arrange panels.
+        let pixelmappers = config.pixelmapper.clone();
+        for mapper_type in pixelmappers {
+            let mapper: NamedPixelMapperWrapper = NamedPixelMapperWrapper(mapper_type.create());
+            shared_mapper =
+                Self::apply_pixel_mapper(shared_mapper, mapper, &config, pixel_designator);
         }
 
         let dither_start_bits = match config.dither_bits {
@@ -292,8 +301,8 @@ impl RGBMatrix {
 
     fn apply_pixel_mapper(
         shared_mapper: PixelDesignatorMap,
-        mapper: Box<dyn PixelMapper>,
-        config: &mut RGBMatrixConfig,
+        mapper: impl PixelMapper,
+        config: &RGBMatrixConfig,
         pixel_designator: PixelDesignator,
     ) -> PixelDesignatorMap {
         let old_width = shared_mapper.width();

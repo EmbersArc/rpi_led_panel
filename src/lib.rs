@@ -6,6 +6,7 @@ mod gpio;
 mod hardware_mapping;
 mod init_sequence;
 mod multiplex_mapper;
+mod named_pixel_mapper;
 mod pin_pulser;
 mod pixel_mapper;
 mod registers;
