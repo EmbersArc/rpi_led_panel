@@ -24,34 +24,34 @@ impl FromStr for NamedPixelMapperType {
     type Err = Box<dyn Error>;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let parts: Vec<&str> = s.split(':').collect();
-
-        match parts[0] {
-            "Mirror" => match parts.get(1).map(|&param| param) {
-                Some("H") | Some("h") => Ok(Self::Mirror(true)),
-                Some("V") | Some("v") => Ok(Self::Mirror(false)),
-                Some(other) => Err(format!(
-                    "'{}' is not valid. Mirror parameter should be either 'V' or 'H'",
-                    other
-                )
-                .into()),
-                None => Err("Mirror parameter is missing".into()),
-            },
-            "Rotate" => {
-                match parts
-                    .get(1)
-                    .and_then(|angle_str| angle_str.parse::<usize>().ok())
-                {
-                    Some(angle) if angle % 90 != 0 => Err(format!(
-                        "'{}' is not valid. Rotation needs to be a multiple of 90 degrees",
-                        angle
+        if let Some((command, param)) = s.split_once(':') {
+            match command {
+                "Mirror" => match param {
+                    "H" | "h" => Ok(Self::Mirror(true)),
+                    "V" | "v" => Ok(Self::Mirror(false)),
+                    other => Err(format!(
+                        "'{}' is not valid. Mirror parameter should be either 'V' or 'H'",
+                        other
                     )
                     .into()),
-                    Some(angle) => Ok(Self::Rotate((angle + 360) % 360)),
-                    None => Err("Rotation angle is missing or invalid".into()),
+                },
+                "Rotate" => {
+                    if let Ok(angle) = param.parse::<usize>() {
+                        if angle % 90 != 0 {
+                            return Err(format!(
+                                "'{}' is not valid. Rotation needs to be a multiple of 90 degrees",
+                                angle
+                            )
+                            .into());
+                        }
+                        return Ok(Self::Rotate((angle + 360) % 360));
+                    }
+                    Err("Rotation angle is missing or invalid".into())
                 }
+                other => Err(format!("'{}' is not a valid Pixel mapping.", other).into()),
             }
-            other => Err(format!("'{}' is not a valid Pixel mapping.", other).into()),
+        } else {
+            Err("Invalid format: no ':' separator found.".into())
         }
     }
 }
