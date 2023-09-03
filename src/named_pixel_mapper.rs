@@ -1,8 +1,22 @@
 use std::{error::Error, str::FromStr};
 
+/// Enum representing different pixel mapping options for mapping the logical layout of your boards
+/// to your physical arrangement. These options allow you to customize the mapping to match your unique setup.
+///
+/// These options can be used with the `--pixelmapper` flag to choose between different mappings.
+///
+/// You can apply multiple mappers in your configuration, and they will be applied in the order you specify.
+/// For example, to first mirror the panels horizontally and then rotate the resulting screen,
+/// You can use `--pixelmapper Mirror:H --pixelmapper Rotate:90`
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NamedPixelMapperType {
+    /// The "Mirror" mapper allows you to mirror the output either horizontally or vertically.
+    /// Specify 'H' for horizontal mirroring or 'V' for vertical mirroring as a parameter after a colon.
+    /// Example: `--pixelmapper Mirror:H`
     Mirror(bool),
+    /// The "Rotate" mapper allows you to rotate your screen by a specified angle in degrees.
+    /// Specify the desired angle as a parameter after a colon.
+    /// Example: `--pixelmapper Rotate:90` for a 90-degree rotation.
     Rotate(usize),
 }
 
