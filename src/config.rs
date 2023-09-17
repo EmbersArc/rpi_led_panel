@@ -2,7 +2,8 @@ use argh::FromArgs;
 
 use crate::{
     canvas::LedSequence, init_sequence::PanelType, multiplex_mapper::MultiplexMapperType,
-    row_address_setter::RowAddressSetterType, HardwareMapping, PiChip,
+    named_pixel_mapper::NamedPixelMapperType, row_address_setter::RowAddressSetterType,
+    HardwareMapping, PiChip,
 };
 
 /// Typically, a Hub75 panel is split in two half displays, so that a 1:16 multiplexing actually multiplexes
@@ -79,6 +80,9 @@ pub struct RGBMatrixConfig {
     /// the kind of multiplexing mapper.
     #[argh(option)]
     pub multiplexing: Option<MultiplexMapperType>,
+    /// the kind of pixel mapper.
+    #[argh(option)]
+    pub pixelmapper: Vec<NamedPixelMapperType>,
     /// the row address setter.
     #[argh(option, default = "RowAddressSetterType::Direct")]
     pub row_setter: RowAddressSetterType,
@@ -110,6 +114,7 @@ impl Default for RGBMatrixConfig {
             parallel: 1,
             panel_type: None,
             multiplexing: None,
+            pixelmapper: vec![],
             row_setter: RowAddressSetterType::Direct,
             led_sequence: LedSequence::Rgb,
         }

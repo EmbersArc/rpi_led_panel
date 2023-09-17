@@ -1,4 +1,4 @@
-use crate::multiplex_mapper::MultiplexMapper;
+use crate::{multiplex_mapper::MultiplexMapper, named_pixel_mapper::NamedPixelMapper};
 
 /// A pixel mapper is a way for you to map pixels of LED matrixes to a different
 /// layout. If you have an implementation of a PixelMapper, you can give it
@@ -39,5 +39,25 @@ impl PixelMapper for MultiplexMapperWrapper {
         // Delegate the call to the underlying MultiplexMapper
         self.0
             .map_visible_to_matrix(matrix_width, matrix_height, visible_x, visible_y)
+    }
+}
+
+pub(crate) struct NamedPixelMapperWrapper(pub(crate) Box<dyn NamedPixelMapper>);
+
+impl PixelMapper for NamedPixelMapperWrapper {
+    fn get_size_mapping(&self, width: usize, height: usize) -> [usize; 2] {
+        // Delegate the call to the underlying NamedPixelMapper
+        self.0.get_size_mapping(width, height)
+    }
+
+    fn map_visible_to_matrix(
+        &self,
+        old_width: usize,
+        old_height: usize,
+        x: usize,
+        y: usize,
+    ) -> [usize; 2] {
+        // Delegate the call to the underlying NamedPixelMapper
+        self.0.map_visible_to_matrix(old_width, old_height, x, y)
     }
 }
