@@ -143,7 +143,9 @@ impl RGBMatrix {
         }
 
         let pixel_designator = PixelDesignator::new(&config.hardware_mapping, config.led_sequence);
-        let mut shared_mapper = PixelDesignatorMap::new(pixel_designator, &config);
+        let width = config.cols * config.chain_length;
+        let height = config.rows * config.parallel;
+        let mut shared_mapper = PixelDesignatorMap::new(pixel_designator, width, height, &config);
 
         // Apply the mapping for the panels first.
         if let Some(mapper_type) = config.multiplexing.as_ref() {
@@ -308,7 +310,8 @@ impl RGBMatrix {
         let old_width = shared_mapper.width();
         let old_height = shared_mapper.height();
         let [new_width, new_height] = mapper.get_size_mapping(old_width, old_height);
-        let mut new_mapper = PixelDesignatorMap::new(pixel_designator, config);
+        let mut new_mapper =
+            PixelDesignatorMap::new(pixel_designator, new_width, new_height, config);
         for y in 0..new_height {
             for x in 0..new_width {
                 let [orig_x, orig_y] = mapper.map_visible_to_matrix(old_width, old_height, x, y);
