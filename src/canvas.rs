@@ -104,9 +104,12 @@ pub(crate) struct PixelDesignatorMap {
 }
 
 impl PixelDesignatorMap {
-    pub(crate) fn new(pixel_designator: PixelDesignator, config: &RGBMatrixConfig) -> Self {
-        let width = config.cols * config.chain_length;
-        let height = config.rows * config.parallel;
+    pub(crate) fn new(
+        pixel_designator: PixelDesignator,
+        width: usize,
+        height: usize,
+        config: &RGBMatrixConfig,
+    ) -> Self {
         let mut buffer = vec![pixel_designator; width * height];
         let h = config.hardware_mapping;
         let double_rows = config.double_rows();
@@ -198,12 +201,12 @@ impl Canvas {
         }
     }
 
-    pub fn rows(&self) -> usize {
-        self.rows
+    pub fn height(&self) -> usize {
+        self.shared_mapper.height
     }
 
-    pub fn cols(&self) -> usize {
-        self.cols
+    pub fn width(&self) -> usize {
+        self.shared_mapper.width
     }
 
     fn position_at(&self, double_row: usize, column: usize, bit: usize) -> usize {
@@ -221,7 +224,7 @@ impl Canvas {
     }
 
     pub fn set_pixel(&mut self, x: usize, y: usize, r: u8, g: u8, b: u8) {
-        if x >= self.cols || y >= self.rows {
+        if x >= self.width() || y >= self.height() {
             return;
         }
         let designator = match self.shared_mapper.get(x, y) {
@@ -371,7 +374,7 @@ pub mod embedded_graphics_support {
 
     impl OriginDimensions for Canvas {
         fn size(&self) -> Size {
-            Size::new(self.cols() as u32, self.rows() as u32)
+            Size::new(self.width() as u32, self.height() as u32)
         }
     }
 
@@ -387,8 +390,8 @@ pub mod embedded_graphics_support {
             for Pixel(coord, color) in pixels.into_iter() {
                 // `DrawTarget` implementation are required to discard any out of bounds pixels without returning
                 // an error or causing a panic.
-                if (0..self.cols() as i32).contains(&coord.x)
-                    && (0..self.rows() as i32).contains(&coord.y)
+                if (0..self.width() as i32).contains(&coord.x)
+                    && (0..self.height() as i32).contains(&coord.y)
                 {
                     self.set_pixel(
                         coord.x as usize,
