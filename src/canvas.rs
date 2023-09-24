@@ -113,31 +113,27 @@ impl PixelDesignatorMap {
         let mut buffer = vec![pixel_designator; width * height];
         let h = config.hardware_mapping;
         let double_rows = config.double_rows();
-        (0..height).for_each(|y| {
-            (0..width).for_each(|x| {
+        for y in 0..height {
+            for x in 0..width {
                 let position = y * width + x;
                 let d = &mut buffer[position];
                 let offset = (y % double_rows) * (width * K_BIT_PLANES) + x;
                 d.gpio_word = Some(offset);
+
                 let panel = y / config.rows;
-                if y - panel * config.rows < double_rows {
-                    let r = h.panels.color_bits[panel].r1;
-                    let g = h.panels.color_bits[panel].g1;
-                    let b = h.panels.color_bits[panel].b1;
-                    d.r_bit = config.led_sequence.get_gpio(Channel::First, r, g, b);
-                    d.g_bit = config.led_sequence.get_gpio(Channel::Second, r, g, b);
-                    d.b_bit = config.led_sequence.get_gpio(Channel::Third, r, g, b);
+                let color_bits = h.panels.color_bits[panel];
+                let (r, g, b) = if y - panel * config.rows < double_rows {
+                    (color_bits.r1, color_bits.g1, color_bits.b1)
                 } else {
-                    let r = h.panels.color_bits[panel].r2;
-                    let g = h.panels.color_bits[panel].g2;
-                    let b = h.panels.color_bits[panel].b2;
-                    d.r_bit = config.led_sequence.get_gpio(Channel::First, r, g, b);
-                    d.g_bit = config.led_sequence.get_gpio(Channel::Second, r, g, b);
-                    d.b_bit = config.led_sequence.get_gpio(Channel::Third, r, g, b);
-                }
+                    (color_bits.r2, color_bits.g2, color_bits.b2)
+                };
+
+                d.r_bit = config.led_sequence.get_gpio(Channel::First, r, g, b);
+                d.g_bit = config.led_sequence.get_gpio(Channel::Second, r, g, b);
+                d.b_bit = config.led_sequence.get_gpio(Channel::Third, r, g, b);
                 d.mask = !(d.r_bit | d.g_bit | d.b_bit);
-            });
-        });
+            }
+        }
         Self {
             width,
             height,
