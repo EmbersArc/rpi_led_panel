@@ -159,7 +159,8 @@ impl RGBMatrix {
         // Apply higher level mappers that might arrange panels.
         let pixelmappers = config.pixelmapper.clone();
         for mapper_type in pixelmappers {
-            let mapper: NamedPixelMapperWrapper = NamedPixelMapperWrapper(mapper_type.create());
+            let mapper: NamedPixelMapperWrapper =
+                NamedPixelMapperWrapper(mapper_type.create(config.chain_length, config.parallel));
             shared_mapper =
                 Self::apply_pixel_mapper(shared_mapper, mapper, &config, pixel_designator);
         }
