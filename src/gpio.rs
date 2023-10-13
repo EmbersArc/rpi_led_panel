@@ -131,7 +131,7 @@ impl Gpio {
             &mut clk_registers,
         );
 
-        let gpio_slowdown = chip.gpio_slowdown();
+        let gpio_slowdown = config.slowdown.unwrap_or_else(|| chip.gpio_slowdown());
 
         Ok(Self {
             gpio_registers,
