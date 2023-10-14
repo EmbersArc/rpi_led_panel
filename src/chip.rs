@@ -77,7 +77,7 @@ impl PiChip {
         match self {
             PiChip::BCM2708 => 1,
             PiChip::BCM2709 => 1,
-            PiChip::BCM2711 => 2,
+            PiChip::BCM2711 => 3,
         }
     }
 }
