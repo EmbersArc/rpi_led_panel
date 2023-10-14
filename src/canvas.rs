@@ -167,6 +167,7 @@ impl PixelDesignatorMap {
 
 #[derive(Clone)]
 pub struct Canvas {
+    #[allow(unused)]
     rows: usize,
     cols: usize,
     double_rows: usize,
