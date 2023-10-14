@@ -63,7 +63,6 @@ impl Gpio {
             return Err(GpioInitializationError::SoundModuleLoaded);
         }
 
-        // TODO: Proper error handling.
         let mut gpio_registers = GPIORegisters::new(chip);
         let time_registers = TimeRegisters::new(chip);
         let mut pwm_registers = PWMRegisters::new(chip);
