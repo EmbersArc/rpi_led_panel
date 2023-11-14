@@ -206,16 +206,15 @@ impl NamedPixelMapper for UArrangeMapper {
         let visible_width = (matrix_width / 64) * 32;
         let slab_height = 2 * panel_height; // one folded u-shape
         let base_y = (y / slab_height) * panel_height;
+        let y_in_slab = y % slab_height;
 
-        let mut matrix_x = x;
-        let mut matrix_y = y % slab_height;
-
-        if matrix_y < panel_height {
-            matrix_x += matrix_width / 2;
+        let [matrix_x, matrix_y] = if y_in_slab < panel_height {
+            // Upper panel of the slab
+            [(x + matrix_width / 2), y_in_slab]
         } else {
-            matrix_x = visible_width - x - 1;
-            matrix_y = slab_height - y - 1;
-        }
+            // Lower panel of the slab
+            [(visible_width - x - 1), (slab_height - y_in_slab - 1)]
+        };
 
         [matrix_x, base_y + matrix_y]
     }
