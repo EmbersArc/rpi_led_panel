@@ -1,5 +1,11 @@
 # Changelog
 
+## Version 0.5.1
+
+### Fixed
+
+- Fixed an issue with the `UArrangeMapper` when `parallel` is greater than 1. [#14](https://github.com/EmbersArc/rpi_led_panel/pull/14)
+
 ## Version 0.5.0
 
 ### Added
