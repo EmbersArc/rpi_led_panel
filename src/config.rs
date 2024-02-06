@@ -89,6 +89,9 @@ pub struct RGBMatrixConfig {
     /// the LED sequence, Default: "RGB"
     #[argh(option, default = "LedSequence::Rgb")]
     pub led_sequence: LedSequence,
+    /// brightness in percent. Default: 100
+    #[argh(option, default = "100")]
+    pub led_brightness: u8,
 }
 
 impl RGBMatrixConfig {
@@ -117,6 +120,7 @@ impl Default for RGBMatrixConfig {
             pixelmapper: vec![],
             row_setter: RowAddressSetterType::Direct,
             led_sequence: LedSequence::Rgb,
+            led_brightness: 100,
         }
     }
 }
