@@ -192,7 +192,7 @@ impl Canvas {
             bitplane_buffer: vec![0u32; double_rows * cols * K_BIT_PLANES],
             shared_mapper,
             pwm_bits: config.pwm_bits,
-            brightness: 100,
+            brightness: config.led_brightness.clamp(1, 100),
             color_lookup,
             interlaced: config.interlaced,
         }
