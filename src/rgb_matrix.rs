@@ -29,7 +29,8 @@ fn initialize_update_thread(chip: &PiChip) {
     // If the user has not setup isolcpus, let them know about the performance improvement.
     if chip.num_cores() > 1 && !linux_has_isol_cpu(last_core_id) {
         eprintln!(
-            "Suggestion: to slightly improve display update, add\n\tisolcpus={last_core_id}\nat the end of /boot/cmdline.txt and reboot"
+            "Suggestion: to slightly improve display update, add\n\tisolcpus={last_core_id}\nat \
+            the end of /boot/cmdline.txt and reboot"
         );
     }
 

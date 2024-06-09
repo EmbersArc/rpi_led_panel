@@ -34,7 +34,9 @@ pub(crate) fn linux_has_isol_cpu(cpu: usize) -> bool {
         Err(_) => return false,
     };
     let reader = BufReader::new(file);
-    reader.lines().any(|line| line.unwrap().contains(&cpu.to_string()))
+    reader
+        .lines()
+        .any(|line| line.unwrap().contains(&cpu.to_string()))
 }
 
 pub fn set_thread_affinity(core_id: usize) -> bool {
