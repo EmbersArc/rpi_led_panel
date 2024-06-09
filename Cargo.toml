@@ -27,7 +27,7 @@ drawing = ["embedded-graphics"]
 
 [dependencies]
 argh = "0.1.12"
-memmap2 = "0.9.3"
+memmap2 = "0.9.4"
 embedded-graphics = { version = "0.8.1", optional = true }
-thread-priority = "0.15.1"
-libc = "0.2.151"
+thread-priority = "1.1.0"
+libc = "0.2.155"
