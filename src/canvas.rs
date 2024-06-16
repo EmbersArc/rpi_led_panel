@@ -5,6 +5,7 @@ use crate::{
     row_address_setter::RowAddressSetter, RGBMatrixConfig,
 };
 
+#[derive(Clone, Copy)]
 pub(crate) enum Channel {
     First,
     Second,
@@ -40,31 +41,22 @@ impl FromStr for LedSequence {
 }
 
 impl LedSequence {
-    fn get_gpio(&self, channel: Channel, red_bits: u32, green_bits: u32, blue_bits: u32) -> u32 {
+    fn get_gpio(self, channel: Channel, red_bits: u32, green_bits: u32, blue_bits: u32) -> u32 {
         match channel {
             Channel::First => match self {
-                LedSequence::Rgb => red_bits,
-                LedSequence::Rbg => red_bits,
-                LedSequence::Grb => green_bits,
-                LedSequence::Gbr => green_bits,
-                LedSequence::Brg => blue_bits,
-                LedSequence::Bgr => blue_bits,
+                LedSequence::Rgb | LedSequence::Rbg => red_bits,
+                LedSequence::Grb | LedSequence::Gbr => green_bits,
+                LedSequence::Brg | LedSequence::Bgr => blue_bits,
             },
             Channel::Second => match self {
-                LedSequence::Rgb => green_bits,
-                LedSequence::Rbg => blue_bits,
-                LedSequence::Grb => red_bits,
-                LedSequence::Gbr => blue_bits,
-                LedSequence::Brg => red_bits,
-                LedSequence::Bgr => green_bits,
+                LedSequence::Rgb | LedSequence::Bgr => green_bits,
+                LedSequence::Grb | LedSequence::Brg => red_bits,
+                LedSequence::Gbr | LedSequence::Rbg => blue_bits,
             },
             Channel::Third => match self {
-                LedSequence::Rgb => blue_bits,
-                LedSequence::Rbg => green_bits,
-                LedSequence::Grb => blue_bits,
-                LedSequence::Gbr => red_bits,
-                LedSequence::Brg => green_bits,
-                LedSequence::Bgr => red_bits,
+                LedSequence::Rgb | LedSequence::Grb => blue_bits,
+                LedSequence::Gbr | LedSequence::Bgr => red_bits,
+                LedSequence::Rbg | LedSequence::Brg => green_bits,
             },
         }
     }
@@ -111,7 +103,7 @@ impl PixelDesignatorMap {
         config: &RGBMatrixConfig,
     ) -> Self {
         let mut buffer = vec![pixel_designator; width * height];
-        let h = config.hardware_mapping;
+        let hm = config.hardware_mapping;
         let double_rows = config.double_rows();
         for y in 0..height {
             for x in 0..width {
@@ -121,7 +113,7 @@ impl PixelDesignatorMap {
                 d.gpio_word = Some(offset);
 
                 let panel = y / config.rows;
-                let color_bits = h.panels.color_bits[panel];
+                let color_bits = hm.panels.color_bits[panel];
                 let (r, g, b) = if y - panel * config.rows < double_rows {
                     (color_bits.r1, color_bits.g1, color_bits.b1)
                 } else {
@@ -198,10 +190,12 @@ impl Canvas {
         }
     }
 
+    #[must_use]
     pub fn height(&self) -> usize {
         self.shared_mapper.height
     }
 
+    #[must_use]
     pub fn width(&self) -> usize {
         self.shared_mapper.width
     }
@@ -224,10 +218,10 @@ impl Canvas {
         if x >= self.width() || y >= self.height() {
             return;
         }
-        let designator = match self.shared_mapper.get(x, y) {
-            Some(d) => d,
-            None => panic!("Pixel not in designator map. This is a bug."),
-        };
+        let designator = self
+            .shared_mapper
+            .get(x, y)
+            .expect("Pixel not in designator map. This is a bug.");
         let PixelDesignator {
             gpio_word,
             r_bit,
@@ -236,12 +230,9 @@ impl Canvas {
             mask: designator_mask,
         } = *designator;
 
-        let pos_start = match gpio_word {
-            Some(w) => w,
-            None => {
-                // non-used pixel marker.
-                return;
-            }
+        let Some(pos_start) = gpio_word else {
+            // non-used pixel marker.
+            return;
         };
 
         let [red, green, blue] = self.color_lookup.lookup_rgb(self.brightness, r, g, b);
@@ -253,13 +244,13 @@ impl Canvas {
             let mask = 1 << plane;
             let mut color_bits = 0;
             if (red & mask) != 0 {
-                color_bits |= r_bit
+                color_bits |= r_bit;
             };
             if (green & mask) != 0 {
-                color_bits |= g_bit
+                color_bits |= g_bit;
             };
             if (blue & mask) != 0 {
-                color_bits |= b_bit
+                color_bits |= b_bit;
             };
             self.bitplane_buffer[pos] &= designator_mask;
             self.bitplane_buffer[pos] |= color_bits;
@@ -281,13 +272,13 @@ impl Canvas {
             let mask = 1 << b;
             let mut plane_bits = 0;
             if (red & mask) == mask {
-                plane_bits |= r_bit
+                plane_bits |= r_bit;
             };
             if (green & mask) == mask {
-                plane_bits |= g_bit
+                plane_bits |= g_bit;
             };
             if (blue & mask) == mask {
-                plane_bits |= b_bit
+                plane_bits |= b_bit;
             };
             (0..self.double_rows).for_each(|row| {
                 self.row_at_mut(row, 0, b).fill(plane_bits);
@@ -308,15 +299,14 @@ impl Canvas {
 
         let half_double = self.double_rows / 2;
         for row_loop in 0..self.double_rows {
-            let d_row = match self.interlaced {
-                false => row_loop,
-                true => {
-                    if row_loop < half_double {
-                        2 * row_loop
-                    } else {
-                        2 * (row_loop - half_double) + 1
-                    }
+            let d_row = if self.interlaced {
+                if row_loop < half_double {
+                    2 * row_loop
+                } else {
+                    2 * (row_loop - half_double) + 1
                 }
+            } else {
+                row_loop
             };
 
             // Rows can't be switched very quickly without ghosting, so we do the
@@ -384,7 +374,7 @@ pub mod embedded_graphics_support {
         where
             I: IntoIterator<Item = Pixel<Self::Color>>,
         {
-            for Pixel(coord, color) in pixels.into_iter() {
+            for Pixel(coord, color) in pixels {
                 // `DrawTarget` implementation are required to discard any out of bounds pixels without returning
                 // an error or causing a panic.
                 if (0..self.width() as i32).contains(&coord.x)

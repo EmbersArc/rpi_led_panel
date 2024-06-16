@@ -20,18 +20,16 @@ macro_rules! gpio_bits {
 }
 
 pub(crate) fn linux_has_module_loaded(name: &str) -> bool {
-    let file = match File::open("/proc/modules") {
-        Ok(file) => file,
-        Err(_) => return false,
+    let Ok(file) = File::open("/proc/modules") else {
+        return false;
     };
     let reader = BufReader::new(file);
     reader.lines().any(|line| line.unwrap().contains(name))
 }
 
 pub(crate) fn linux_has_isol_cpu(cpu: usize) -> bool {
-    let file = match File::open("/sys/devices/system/cpu/isolated") {
-        Ok(file) => file,
-        Err(_) => return false,
+    let Ok(file) = File::open("/sys/devices/system/cpu/isolated") else {
+        return false;
     };
     let reader = BufReader::new(file);
     reader

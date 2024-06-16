@@ -54,21 +54,21 @@ impl Panels {
     pub(crate) fn red_bits(&self) -> u32 {
         self.color_bits
             .iter()
-            .map(|p| p.red_bits())
+            .map(ColorBits::red_bits)
             .fold(0, BitOr::bitor)
     }
 
     pub(crate) fn green_bits(&self) -> u32 {
         self.color_bits
             .iter()
-            .map(|p| p.green_bits())
+            .map(ColorBits::green_bits)
             .fold(0, BitOr::bitor)
     }
 
     pub(crate) fn blue_bits(&self) -> u32 {
         self.color_bits
             .iter()
-            .map(|p| p.blue_bits())
+            .map(ColorBits::blue_bits)
             .fold(0, BitOr::bitor)
     }
 }
@@ -132,6 +132,7 @@ impl HardwareMapping {
 
 impl HardwareMapping {
     /// The regular hardware mapping used by the adapter PCBs.
+    #[must_use]
     pub const fn regular() -> Self {
         Self {
             output_enable: gpio_bits!(18),
@@ -183,6 +184,7 @@ impl HardwareMapping {
     }
 
     // An unmodified Adafruit HAT
+    #[must_use]
     pub const fn adafruit_hat() -> Self {
         Self {
             output_enable: gpio_bits!(4),
@@ -216,6 +218,7 @@ impl HardwareMapping {
     }
 
     // An Adafruit HAT with the PWM modification
+    #[must_use]
     pub const fn adafruit_hat_pwm() -> Self {
         Self {
             output_enable: gpio_bits!(18),
@@ -225,6 +228,7 @@ impl HardwareMapping {
 
     /// The regular pin-out, but for Raspberry Pi1. The very first Pi1 Rev1 uses the same pin for GPIO-21 as
     /// later Pis use GPIO-27. Make it work for both.
+    #[must_use]
     pub const fn regular_pi1() -> Self {
         Self {
             output_enable: gpio_bits!(18),
@@ -263,6 +267,7 @@ impl HardwareMapping {
 
     /// Early forms of this library had this as default mapping, mostly derived from the 26 GPIO-header
     /// version so that it also can work on 40 Pin GPIO headers with more parallel chains. Not used anymore.
+    #[must_use]
     pub const fn classic() -> Self {
         Self {
             output_enable: gpio_bits!(27), // Not available on RPi1, Rev 1
@@ -310,6 +315,7 @@ impl HardwareMapping {
     }
 
     /// Classic pin-out for Rev-A Raspberry Pi.
+    #[must_use]
     pub const fn classic_pi1() -> Self {
         Self {
             // The Revision-1 and Revision-2 boards have different GPIO mapping on the P1-3 and P1-5. So we

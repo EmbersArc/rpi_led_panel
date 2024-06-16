@@ -51,7 +51,7 @@ impl FromStr for MultiplexMapperType {
 }
 
 impl MultiplexMapperType {
-    pub(crate) fn create(&self) -> Box<dyn MultiplexMapper> {
+    pub(crate) fn create(self) -> Box<dyn MultiplexMapper> {
         match self {
             MultiplexMapperType::Stripe => Box::new(StripeMultiplexMapper::new()),
             MultiplexMapperType::Checkered => Box::new(CheckeredMultiplexMapper::new()),
@@ -727,7 +727,8 @@ impl MultiplexMapper for P10Outdoor1R1G1BMultiplexMapper1 {
     fn map_single_panel(&self, x: usize, y: usize) -> [usize; 2] {
         let vblock_is_even = (y / P10_TILE_HEIGHT) % 2 == 0;
 
-        let matrix_x = P10_TILE_WIDTH * (1 + vblock_is_even as usize + 2 * (x / P10_TILE_WIDTH))
+        let matrix_x = P10_TILE_WIDTH
+            * (1 + usize::from(vblock_is_even) + 2 * (x / P10_TILE_WIDTH))
             - (x % P10_TILE_WIDTH)
             - 1;
         let matrix_y = (y % P10_TILE_HEIGHT) + P10_TILE_HEIGHT * (y / (P10_TILE_HEIGHT * 2));
@@ -775,8 +776,8 @@ impl MultiplexMapper for P10Outdoor1R1G1BMultiplexMapper2 {
 
     fn map_single_panel(&self, x: usize, y: usize) -> [usize; 2] {
         let vblock_is_even = (y / P10_TILE_HEIGHT) % 2 == 0;
-        let even_vblock_shift = vblock_is_even as usize * P10_EVEN_VBLOCK_OFFSET;
-        let odd_vblock_shift = (!vblock_is_even) as usize * P10_ODD_VBLOCK_OFFSET;
+        let even_vblock_shift = usize::from(vblock_is_even) * P10_EVEN_VBLOCK_OFFSET;
+        let odd_vblock_shift = usize::from(!vblock_is_even) * P10_ODD_VBLOCK_OFFSET;
 
         let matrix_x = if vblock_is_even {
             P10_TILE_WIDTH * (1 + 2 * (x / P10_TILE_WIDTH)) - (x % P10_TILE_WIDTH) - 1
@@ -828,8 +829,8 @@ impl MultiplexMapper for P10Outdoor1R1G1BMultiplexMapper3 {
 
     fn map_single_panel(&self, x: usize, y: usize) -> [usize; 2] {
         let vblock_is_even = (y / P10_TILE_HEIGHT) % 2 == 0;
-        let even_vblock_shift = vblock_is_even as usize * P10_EVEN_VBLOCK_OFFSET;
-        let odd_vblock_shift = (!vblock_is_even) as usize * P10_ODD_VBLOCK_OFFSET;
+        let even_vblock_shift = usize::from(vblock_is_even) * P10_EVEN_VBLOCK_OFFSET;
+        let odd_vblock_shift = usize::from(!vblock_is_even) * P10_ODD_VBLOCK_OFFSET;
 
         let matrix_x = if vblock_is_even {
             x + ((x + even_vblock_shift) / P10_TILE_WIDTH) * P10_TILE_WIDTH + odd_vblock_shift
@@ -884,7 +885,7 @@ impl MultiplexMapper for P10CoremanMapper {
         let mut mul_y = if (y & 4) > 0 { 0 } else { 8 };
 
         // Row offset 9,9,8,8,1,1,0,0,9,9,8,8,1,1,0,0
-        mul_y += if (y & 2) > 0 { 0 } else { 1 };
+        mul_y += usize::from((y & 2) == 0);
         mul_y += (x >> 2) & !1; // Drop lsb
 
         let matrix_x = (mul_y << 3) + x % 8;
@@ -937,11 +938,7 @@ impl MultiplexMapper for P10Outdoor32x16HalfScanMapper {
         let dx = x % 8;
 
         let matrix_y = if y / 8 == 0 {
-            if y % 2 == 0 {
-                0
-            } else {
-                1
-            }
+            usize::from(y % 2 != 0)
         } else if y % 2 == 0 {
             2
         } else {

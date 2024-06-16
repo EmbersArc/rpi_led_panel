@@ -25,6 +25,7 @@ impl FromStr for PiChip {
 
 impl PiChip {
     /// Try to automatically determine the model.
+    #[must_use]
     pub fn determine() -> Option<Self> {
         // https://www.raspberrypi.org/documentation/hardware/raspberrypi/revision-codes/README.md
         let cpuinfo = read_to_string("/proc/cpuinfo").ok()?;
@@ -56,27 +57,25 @@ impl PiChip {
         }
     }
 
-    pub(crate) const fn num_cores(&self) -> usize {
+    pub(crate) const fn num_cores(self) -> usize {
         match self {
             PiChip::BCM2708 => 1,
-            PiChip::BCM2709 => 4,
-            PiChip::BCM2711 => 4,
+            PiChip::BCM2709 | PiChip::BCM2711 => 4,
         }
     }
 
     // All peripherals can be described by an offset from the Peripheral Base Address.
-    pub(crate) const fn get_peripherals_base(&self) -> u64 {
+    pub(crate) const fn get_peripherals_base(self) -> u64 {
         match self {
-            PiChip::BCM2708 => 0x20000000,
-            PiChip::BCM2709 => 0x3F000000,
-            PiChip::BCM2711 => 0xFE000000,
+            PiChip::BCM2708 => 0x2000_0000,
+            PiChip::BCM2709 => 0x3F00_0000,
+            PiChip::BCM2711 => 0xFE00_0000,
         }
     }
 
-    pub(crate) fn gpio_slowdown(&self) -> u32 {
+    pub(crate) fn gpio_slowdown(self) -> u32 {
         match self {
-            PiChip::BCM2708 => 1,
-            PiChip::BCM2709 => 1,
+            PiChip::BCM2708 | PiChip::BCM2709 => 1,
             PiChip::BCM2711 => 3,
         }
     }

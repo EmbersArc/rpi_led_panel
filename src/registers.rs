@@ -35,7 +35,7 @@ impl<T> MmapPtr<T> {
 }
 
 // General Purpose IO
-const GP_OFFSET: u64 = 0x200000;
+const GP_OFFSET: u64 = 0x0020_0000;
 const GP_SIZE_BYTES: usize = 41 * std::mem::size_of::<u32>();
 const GP_FSEL0: usize = 0x0;
 const GP_SET0: usize = 0x1C;
@@ -72,6 +72,7 @@ impl GPIOFunctionSelectRegisters {
     }
 }
 
+#[derive(Clone, Copy)]
 #[allow(unused)]
 pub(crate) enum GPIOFunction {
     Input,
@@ -85,7 +86,7 @@ pub(crate) enum GPIOFunction {
 }
 
 impl GPIOFunction {
-    fn bits(&self) -> u32 {
+    fn bits(self) -> u32 {
         match self {
             GPIOFunction::Input => 0b000,
             GPIOFunction::Output => 0b001,
@@ -117,41 +118,41 @@ pub fn mmap_bcm_register(chip: PiChip, offset: u64, size_bytes: usize) -> Rc<Mma
 }
 
 pub(crate) struct GPIORegisters {
-    clr0_reg: MmapPtr<u32>,
-    set0_reg: MmapPtr<u32>,
-    lvl0_reg: MmapPtr<u32>,
-    function_select_registers: GPIOFunctionSelectRegisters,
+    clr0: MmapPtr<u32>,
+    set0: MmapPtr<u32>,
+    lvl0: MmapPtr<u32>,
+    function_select: GPIOFunctionSelectRegisters,
 }
 
 impl GPIORegisters {
     pub(crate) fn new(chip: PiChip) -> Self {
         let map = mmap_bcm_register(chip, GP_OFFSET, GP_SIZE_BYTES);
-        let clr0_reg = MmapPtr::new(map.clone(), GP_CLR0);
-        let set0_reg = MmapPtr::new(map.clone(), GP_SET0);
-        let lvl0_reg = MmapPtr::new(map.clone(), GP_LEV0);
-        let function_select_registers = GPIOFunctionSelectRegisters::new(map, GP_FSEL0);
+        let clr0 = MmapPtr::new(map.clone(), GP_CLR0);
+        let set0 = MmapPtr::new(map.clone(), GP_SET0);
+        let lvl0 = MmapPtr::new(map.clone(), GP_LEV0);
+        let function_select = GPIOFunctionSelectRegisters::new(map, GP_FSEL0);
         Self {
-            clr0_reg,
-            set0_reg,
-            lvl0_reg,
-            function_select_registers,
+            clr0,
+            set0,
+            lvl0,
+            function_select,
         }
     }
 
     pub(crate) fn write_clr_bits(&mut self, value: u32) {
-        self.clr0_reg.write(value);
+        self.clr0.write(value);
     }
 
     pub(crate) fn write_set_bits(&mut self, value: u32) {
-        self.set0_reg.write(value);
+        self.set0.write(value);
     }
 
     pub(crate) fn select_function(&mut self, pin: u8, function: GPIOFunction) {
-        self.function_select_registers.set_function(pin, function);
+        self.function_select.set_function(pin, function);
     }
 
     pub(crate) fn read_pin_level0(&self) -> u32 {
-        self.lvl0_reg.read()
+        self.lvl0.read()
     }
 }
 
@@ -172,28 +173,28 @@ struct TimeRegister {
 
 impl TimeRegister {
     fn get_u64(&self) -> u64 {
-        ((self.high as u64) << u32::BITS) | self.low as u64
+        (u64::from(self.high) << u32::BITS) | u64::from(self.low)
     }
 }
 
 // Time measurement.
 pub(crate) struct TimeRegisters {
-    time_reg: MmapPtr<TimeRegister>,
+    time: MmapPtr<TimeRegister>,
     sleep_factor: f32,
 }
 
 impl TimeRegisters {
     pub(crate) fn new(chip: PiChip) -> Self {
         let map = mmap_bcm_register(chip, ST_OFFSET, ST_SIZE_BYTES);
-        let time_reg = MmapPtr::new(map, ST_CLO);
+        let time = MmapPtr::new(map, ST_CLO);
         Self {
-            time_reg,
+            time,
             sleep_factor: 0.4,
         }
     }
 
     pub(crate) fn get_time(&self) -> u64 {
-        self.time_reg.read().get_u64()
+        self.time.read().get_u64()
     }
 
     pub(crate) fn sleep(&mut self, duration_us: u64) {
@@ -213,7 +214,7 @@ impl TimeRegisters {
 }
 
 // Pulse Width Modulator
-const PWM_OFFSET: u64 = 0x20C000;
+const PWM_OFFSET: u64 = 0x0020_C000;
 const PWM_SIZE_BYTES: usize = 32;
 const PWM_CTL: usize = 0x00;
 const PWM_STA: usize = 0x04;
@@ -231,24 +232,24 @@ pub(crate) const PWM_CTL_USEF1: u32 = 1 << 5;
 pub(crate) const PWM_CTL_CLRF1: u32 = 1 << 6;
 
 pub(crate) struct PWMRegisters {
-    pwm_ctl_reg: MmapPtr<u32>,
-    pwm_rng1_reg: MmapPtr<u32>,
-    pwm_fif1_reg: MmapPtr<u32>,
-    pwm_sta_reg: MmapPtr<u32>,
+    ctl: MmapPtr<u32>,
+    rng1: MmapPtr<u32>,
+    fif1: MmapPtr<u32>,
+    sta: MmapPtr<u32>,
 }
 
 impl PWMRegisters {
     pub(crate) fn new(chip: PiChip) -> Self {
         let map = mmap_bcm_register(chip, PWM_OFFSET, PWM_SIZE_BYTES);
-        let pwm_ctl_reg = MmapPtr::new(map.clone(), PWM_CTL);
-        let pwm_rng1_reg = MmapPtr::new(map.clone(), PWM_RNG1);
-        let pwm_fif1_reg = MmapPtr::new(map.clone(), PWM_FIF1);
-        let pwm_sta_reg = MmapPtr::new(map, PWM_STA);
+        let ctl = MmapPtr::new(map.clone(), PWM_CTL);
+        let rng1 = MmapPtr::new(map.clone(), PWM_RNG1);
+        let fif1 = MmapPtr::new(map.clone(), PWM_FIF1);
+        let sta = MmapPtr::new(map, PWM_STA);
         Self {
-            pwm_ctl_reg,
-            pwm_rng1_reg,
-            pwm_fif1_reg,
-            pwm_sta_reg,
+            ctl,
+            rng1,
+            fif1,
+            sta,
         }
     }
 
@@ -263,24 +264,24 @@ impl PWMRegisters {
     }
 
     pub(crate) fn set_pwm_ctl(&mut self, value: u32) {
-        self.pwm_ctl_reg.write(value);
+        self.ctl.write(value);
     }
 
     pub(crate) fn set_pwm_pulse_period(&mut self, value: u32) {
-        self.pwm_rng1_reg.write(value);
+        self.rng1.write(value);
     }
 
     pub(crate) fn push_fifo(&mut self, value: u32) {
-        self.pwm_fif1_reg.write(value);
+        self.fif1.write(value);
     }
 
     pub(crate) fn fifo_empty(&self) -> bool {
-        (self.pwm_sta_reg.read() & PWM_STA_EMPT1) != 0
+        (self.sta.read() & PWM_STA_EMPT1) != 0
     }
 }
 
 // Clock Manager
-const CM_OFFSET: u64 = 0x101000;
+const CM_OFFSET: u64 = 0x0010_1000;
 const CM_SIZE_BYTES: usize = 452;
 const CM_PASSWD: u32 = 0x5A << 24;
 const CM_PWMCTL: usize = 0xA0;
@@ -310,36 +311,33 @@ const fn cm_div_divi(x: u32) -> u32 {
 }
 
 pub(crate) struct ClkRegisters {
-    pwm_ctl_reg: MmapPtr<u32>,
-    pwm_div_reg: MmapPtr<u32>,
+    pwm_ctl: MmapPtr<u32>,
+    pwm_div: MmapPtr<u32>,
 }
 
 impl ClkRegisters {
     pub(crate) fn new(chip: PiChip) -> Self {
         let map = mmap_bcm_register(chip, CM_OFFSET, CM_SIZE_BYTES);
-        let pwm_ctl_reg = MmapPtr::new(map.clone(), CM_PWMCTL);
-        let pwm_div_reg = MmapPtr::new(map, CM_PWMDIV);
-        Self {
-            pwm_ctl_reg,
-            pwm_div_reg,
-        }
+        let pwm_ctl = MmapPtr::new(map.clone(), CM_PWMCTL);
+        let pwm_div = MmapPtr::new(map, CM_PWMDIV);
+        Self { pwm_ctl, pwm_div }
     }
 
     pub(crate) fn init_pwm_divider(&mut self, divider: u32) {
         assert!(divider < (1 << 12)); // we only have 12 bits.
 
         // reset PWM clock
-        self.pwm_ctl_reg.write(CM_PASSWD | CM_PWMCTL_KILL);
+        self.pwm_ctl.write(CM_PASSWD | CM_PWMCTL_KILL);
 
         // set PWM clock source as 500 MHz PLLD
-        self.pwm_ctl_reg.write(CM_PASSWD | cm_ctl_src(CM_SRC_PLLD));
+        self.pwm_ctl.write(CM_PASSWD | cm_ctl_src(CM_SRC_PLLD));
 
         // set PWM clock divider
-        self.pwm_div_reg
+        self.pwm_div
             .write(CM_PASSWD | cm_div_divi(divider) | cm_div_divf(0));
 
         // enable PWM clock
-        self.pwm_ctl_reg
+        self.pwm_ctl
             .write(CM_PASSWD | CM_PWMCTL_ENAB | cm_ctl_src(CM_SRC_PLLD));
     }
 }

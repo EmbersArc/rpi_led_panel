@@ -21,7 +21,7 @@ use crate::{
     RGBMatrixConfig,
 };
 
-fn initialize_update_thread(chip: &PiChip) {
+fn initialize_update_thread(chip: PiChip) {
     // Pin the thread to the last core to avoid the flicker resulting from context switching.
     let last_core_id = chip.num_cores() - 1;
     set_thread_affinity(last_core_id);
@@ -154,7 +154,7 @@ impl RGBMatrix {
             mapper.edit_rows_cols(&mut config.rows, &mut config.cols);
             let mapper = MultiplexMapperWrapper(mapper);
             shared_mapper =
-                Self::apply_pixel_mapper(shared_mapper, mapper, &config, pixel_designator);
+                Self::apply_pixel_mapper(&shared_mapper, &mapper, &config, pixel_designator);
         }
 
         // Apply higher level mappers that might arrange panels.
@@ -163,7 +163,7 @@ impl RGBMatrix {
             let mapper: NamedPixelMapperWrapper =
                 NamedPixelMapperWrapper(mapper_type.create(config.chain_length, config.parallel));
             shared_mapper =
-                Self::apply_pixel_mapper(shared_mapper, mapper, &config, pixel_designator);
+                Self::apply_pixel_mapper(&shared_mapper, &mapper, &config, pixel_designator);
         }
 
         let dither_start_bits = match config.dither_bits {
@@ -187,7 +187,7 @@ impl RGBMatrix {
             channel::<Result<u32, MatrixCreationError>>();
 
         let thread_handle = spawn(move || {
-            initialize_update_thread(&chip);
+            initialize_update_thread(chip);
 
             let mut address_setter = config.row_setter.create(&config);
 
@@ -245,7 +245,7 @@ impl RGBMatrix {
                         Ok(new_canvas) => {
                             let old_canvas = replace(&mut thread_canvas, new_canvas);
                             match canvas_from_thread_sender.send(old_canvas) {
-                                Ok(_) => break,
+                                Ok(()) => break,
                                 Err(_) => {
                                     break 'thread;
                                 }
@@ -304,8 +304,8 @@ impl RGBMatrix {
     }
 
     fn apply_pixel_mapper(
-        shared_mapper: PixelDesignatorMap,
-        mapper: impl PixelMapper,
+        shared_mapper: &PixelDesignatorMap,
+        mapper: &impl PixelMapper,
         config: &RGBMatrixConfig,
         pixel_designator: PixelDesignator,
     ) -> PixelDesignatorMap {
@@ -337,14 +337,19 @@ impl RGBMatrix {
             ..
         } = self;
 
-        canvas_to_thread_sender.send(canvas).unwrap();
+        canvas_to_thread_sender
+            .send(canvas)
+            .expect("Display update thread shut down unexpectedly.");
 
         frame_rate_monitor.update();
 
-        canvas_from_thread_receiver.recv().unwrap()
+        canvas_from_thread_receiver
+            .recv()
+            .expect("Display update thread shut down unexpectedly.")
     }
 
     /// Get the bits that were available for input.
+    #[must_use]
     pub fn enabled_input_bits(&self) -> u32 {
         self.enabled_input_bits
     }
@@ -355,6 +360,7 @@ impl RGBMatrix {
     }
 
     /// Get the average frame rate over the last 60 frames.
+    #[must_use]
     pub fn get_framerate(&self) -> usize {
         self.frame_rate_monitor.get_fps().round() as usize
     }

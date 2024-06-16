@@ -27,7 +27,7 @@ impl FromStr for RowAddressSetterType {
 }
 
 impl RowAddressSetterType {
-    pub(crate) fn create(&self, config: &RGBMatrixConfig) -> Box<dyn RowAddressSetter> {
+    pub(crate) fn create(self, config: &RGBMatrixConfig) -> Box<dyn RowAddressSetter> {
         match self {
             RowAddressSetterType::Direct => Box::new(DirectRowAddressSetter::new(config)),
             RowAddressSetterType::ShiftRegister => {
@@ -104,7 +104,7 @@ impl RowAddressSetter for DirectRowAddressSetter {
     }
 }
 
-/// The SM5266RowAddressSetter (ABC Shifter + DE direct) sets bits ABC using
+/// The [`SM5266RowAddressSetter`] (ABC Shifter + DE direct) sets bits ABC using
 /// a 8 bit shifter and DE directly. The panel this works with has 8 SM5266
 /// shifters (4 for the top 32 rows and 4 for the bottom 32 rows).
 /// DE is used to select the active shifter
@@ -276,7 +276,7 @@ impl RowAddressSetter for ABCShiftRegisterRowAddressSetter {
     }
 }
 
-/// The DirectABCDRowAddressSetter sets the address by one of
+/// The [`DirectABCDLineRowAddressSetter`] sets the address by one of
 /// row pin ABCD for 32х16 matrix 1:4 multiplexing. The matrix has
 /// 4 addressable rows. Row is selected by a low level on the
 /// corresponding row address pin. Other row address pins must be in high level.

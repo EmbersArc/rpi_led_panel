@@ -21,7 +21,7 @@ impl FromStr for PanelType {
 }
 
 impl PanelType {
-    pub(crate) fn run_init_sequence(&self, gpio: &mut Gpio, config: &RGBMatrixConfig) {
+    pub(crate) fn run_init_sequence(self, gpio: &mut Gpio, config: &RGBMatrixConfig) {
         match self {
             Self::FM6126 => Self::init_fm6126(gpio, config),
             Self::FM6127 => Self::init_fm6127(gpio, config),
@@ -35,8 +35,8 @@ impl PanelType {
         let bits_off = hm.a;
         let mask = bits_on | hm.strobe;
 
-        let init_b12 = 0b0111111111111111; // full bright
-        let init_b13 = 0b0000000001000000; // panel on
+        let init_b12 = 0b0111_1111_1111_1111; // full bright
+        let init_b13 = 0b0000_0000_0100_0000; // panel on
 
         gpio.clear_bits(hm.clock | hm.strobe);
 
@@ -47,7 +47,7 @@ impl PanelType {
                 bits_on
             };
             if c > columns - 12 {
-                value |= hm.strobe
+                value |= hm.strobe;
             };
             gpio.write_masked_bits(value, mask);
             gpio.set_bits(hm.clock);
@@ -62,7 +62,7 @@ impl PanelType {
                 bits_on
             };
             if c > columns - 13 {
-                value |= hm.strobe
+                value |= hm.strobe;
             };
             gpio.write_masked_bits(value, mask);
             gpio.set_bits(hm.clock);
@@ -80,9 +80,9 @@ impl PanelType {
         let bits_off = 0;
         let mask = bits_on | hm.strobe;
 
-        let init_b12 = 0b1111111111001110; // register 1
-        let init_b13 = 0b1110000001100010; // register 2.
-        let init_b11 = 0b0101111100000000; // register 3.
+        let init_b12 = 0b1111_1111_1100_1110; // register 1
+        let init_b13 = 0b1110_0000_0110_0010; // register 2.
+        let init_b11 = 0b0101_1111_0000_0000; // register 3.
 
         gpio.clear_bits(hm.clock | hm.strobe);
 
@@ -93,7 +93,7 @@ impl PanelType {
                 bits_on
             };
             if c > columns - 12 {
-                value |= hm.strobe
+                value |= hm.strobe;
             };
             gpio.write_masked_bits(value, mask);
             gpio.set_bits(hm.clock);
@@ -108,7 +108,7 @@ impl PanelType {
                 bits_on
             };
             if c > columns - 13 {
-                value |= hm.strobe
+                value |= hm.strobe;
             };
             gpio.write_masked_bits(value, mask);
             gpio.set_bits(hm.clock);
@@ -123,7 +123,7 @@ impl PanelType {
                 bits_on
             };
             if c > columns - 11 {
-                value |= hm.strobe
+                value |= hm.strobe;
             };
             gpio.write_masked_bits(value, mask);
             gpio.set_bits(hm.clock);

@@ -3,7 +3,7 @@ use crate::config::K_BIT_PLANES;
 // Do CIE1931 luminance correction and scale to output bitplanes
 fn luminance_cie1931(c: u8, brightness: u8) -> u16 {
     let out_factor = ((1 << K_BIT_PLANES) - 1) as f32;
-    let v = (c as f32) * (brightness as f32) / 255.0;
+    let v = f32::from(c) * f32::from(brightness) / 255.0;
     (out_factor
         * (if v <= 8.0 {
             v / 902.3
@@ -20,9 +20,9 @@ pub(crate) struct ColorLookup {
 impl ColorLookup {
     pub(crate) fn new_cie1931() -> Self {
         let mut per_brightness = [[0; 256]; 100];
-        (0..256).for_each(|c| {
-            (0..100).for_each(|b| {
-                per_brightness[b][c] = luminance_cie1931(c as u8, (b + 1) as u8);
+        (0..=255u8).for_each(|c| {
+            (0..100u8).for_each(|b| {
+                per_brightness[b as usize][c as usize] = luminance_cie1931(c, b + 1);
             });
         });
         Self { per_brightness }

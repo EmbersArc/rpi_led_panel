@@ -55,8 +55,7 @@ impl FromStr for NamedPixelMapperType {
                     "H" | "h" => Ok(Self::Mirror(true)),
                     "V" | "v" => Ok(Self::Mirror(false)),
                     other => Err(format!(
-                        "'{}' is not valid. Mirror parameter should be either 'V' or 'H'",
-                        other
+                        "'{other}' is not valid. Mirror parameter should be either 'V' or 'H'"
                     )
                     .into()),
                 },
@@ -64,8 +63,7 @@ impl FromStr for NamedPixelMapperType {
                     if let Ok(angle) = param.parse::<usize>() {
                         if angle % 90 != 0 {
                             return Err(format!(
-                                "'{}' is not valid. Rotation needs to be a multiple of 90 degrees",
-                                angle
+                                "'{angle}' is not valid. Rotation needs to be a multiple of 90 degrees"
                             )
                             .into());
                         }
@@ -73,12 +71,12 @@ impl FromStr for NamedPixelMapperType {
                     }
                     Err("Rotation angle is missing or invalid".into())
                 }
-                other => Err(format!("'{}' is not a valid Pixel mapping.", other).into()),
+                other => Err(format!("'{other}' is not a valid Pixel mapping.").into()),
             }
         } else if s == "U-mapper" {
             Ok(Self::UMapper)
         } else {
-            Err(format!("'{}' is not a valid Pixel mapping.", s).into())
+            Err(format!("'{s}' is not a valid Pixel mapping.").into())
         }
     }
 }
@@ -96,9 +94,9 @@ impl NamedPixelMapperType {
 }
 
 /// A pixel mapper is a way for you to map pixels of LED matrixes to a different
-/// layout. If you have an implementation of a PixelMapper, you can give it
-/// to the RGBMatrix::apply_pixel_mapper(), which then presents you a canvas
-/// that has the new "visible_width", "visible_height".
+/// layout. If you have an implementation of a [`PixelMapper`], you can give it
+/// to the [`RGBMatrix::apply_pixel_mapper`], which then presents you a canvas
+/// that has the new [`visible_width`], [`visible_height`].
 pub(crate) trait NamedPixelMapper {
     fn get_size_mapping(&self, matrix_width: usize, matrix_height: usize) -> [usize; 2];
 
@@ -171,13 +169,14 @@ struct UArrangeMapper {
 
 impl UArrangeMapper {
     fn new_with_parameters(chain: usize, parallel: usize) -> Self {
-        if chain < 2 {
-            // technically, a chain of 2 would work, but somewhat pointless
-            panic!("U-mapper: need at least '--chain_length 4' for useful folding");
-        }
-        if chain % 2 != 0 {
-            panic!("U-mapper: Chain (--chain_length) needs to be divisible by two");
-        }
+        assert!(
+            chain >= 2,
+            "U-mapper: need at least '--chain_length 4' for useful folding"
+        );
+        assert!(
+            chain % 2 == 0,
+            "U-mapper: Chain (--chain_length) needs to be divisible by two"
+        );
         Self { parallel }
     }
 }
