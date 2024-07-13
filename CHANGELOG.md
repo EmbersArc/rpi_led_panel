@@ -1,5 +1,9 @@
 # Changelog
 
+## Version 0.6.0
+
+- Added the `--led-brightness` CLI argument. [#15](https://github.com/EmbersArc/rpi_led_panel/pull/15)
+
 ## Version 0.5.1
 
 ### Fixed
