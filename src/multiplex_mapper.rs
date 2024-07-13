@@ -938,7 +938,11 @@ impl MultiplexMapper for P10Outdoor32x16HalfScanMapper {
         let dx = x % 8;
 
         let matrix_y = if y / 8 == 0 {
-            usize::from(y % 2 != 0)
+            if y % 2 == 0 {
+                0
+            } else {
+                1
+            }
         } else if y % 2 == 0 {
             2
         } else {

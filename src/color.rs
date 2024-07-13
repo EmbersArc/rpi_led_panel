@@ -22,7 +22,7 @@ impl ColorLookup {
         let mut per_brightness = [[0; 256]; 100];
         (0..=255u8).for_each(|c| {
             (0..100u8).for_each(|b| {
-                per_brightness[b as usize][c as usize] = luminance_cie1931(c, b + 1);
+                per_brightness[usize::from(b)][usize::from(c)] = luminance_cie1931(c, b + 1);
             });
         });
         Self { per_brightness }
