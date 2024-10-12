@@ -22,3 +22,4 @@ pub use init_sequence::PanelType;
 pub use multiplex_mapper::MultiplexMapperType;
 pub use rgb_matrix::RGBMatrix;
 pub use row_address_setter::RowAddressSetterType;
+pub use named_pixel_mapper::NamedPixelMapperType;
