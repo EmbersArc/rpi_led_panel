@@ -167,7 +167,7 @@ impl MultiplexMapper for StripeMultiplexMapper {
     fn map_single_panel(&self, x: usize, y: usize) -> [usize; 2] {
         let is_top_stripe = (y % (self.panel_rows() / 2)) < self.panel_rows() / 4;
         let matrix_x = if is_top_stripe {
-            x + self.panel_cols
+            x + self.panel_cols()
         } else {
             x
         };
