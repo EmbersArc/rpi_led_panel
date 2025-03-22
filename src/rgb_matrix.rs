@@ -67,7 +67,7 @@ pub enum MatrixCreationError {
     ThreadTimedOut,
     GpioError(GpioInitializationError),
     MemoryAccessError,
-    PixelMapperError,
+    PixelMapperError(String),
 }
 
 impl Error for MatrixCreationError {}
@@ -93,7 +93,9 @@ impl Display for MatrixCreationError {
             MatrixCreationError::MemoryAccessError => f.write_str(
                 "Failed to access the physical memory. Not running with root privileges?",
             ),
-            MatrixCreationError::PixelMapperError => f.write_str("Error in pixel mapper."),
+            MatrixCreationError::PixelMapperError(message) => {
+                write!(f, "Error in pixel mapper: {message}")
+            }
         }
     }
 }
@@ -161,8 +163,8 @@ impl RGBMatrix {
 
         // Apply higher level mappers that might arrange panels.
         for mapper_type in config.pixelmapper.iter() {
-            let inner = mapper_type.create(config.chain_length, config.parallel);
-            let mapper = PixelMapper::Named(inner);
+            let mapper = mapper_type.create(config.chain_length, config.parallel)?;
+            let mapper = PixelMapper::Named(mapper);
             shared_mapper =
                 Self::apply_pixel_mapper(&shared_mapper, &mapper, &config, pixel_designator)?;
         }
@@ -312,14 +314,16 @@ impl RGBMatrix {
     ) -> Result<PixelDesignatorMap, MatrixCreationError> {
         let old_width = shared_mapper.width();
         let old_height = shared_mapper.height();
-        let [new_width, new_height] = mapper.get_size_mapping(old_width, old_height);
+        let [new_width, new_height] = mapper.get_size_mapping(old_width, old_height)?;
         let mut new_mapper =
             PixelDesignatorMap::new(pixel_designator, new_width, new_height, config);
         for y in 0..new_height {
             for x in 0..new_width {
                 let [orig_x, orig_y] = mapper.map_visible_to_matrix(old_width, old_height, x, y);
                 if orig_x >= old_width || orig_y >= old_height {
-                    return Err(MatrixCreationError::PixelMapperError);
+                    return Err(MatrixCreationError::PixelMapperError(
+                        "Invalid dimensions.".to_string(),
+                    ));
                 }
                 let orig_designator = shared_mapper.get(orig_x, orig_y).unwrap();
                 *new_mapper.get_mut(x, y).unwrap() = *orig_designator;

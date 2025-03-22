@@ -1,4 +1,7 @@
-use crate::{multiplex_mapper::MultiplexMapper, named_pixel_mapper::NamedPixelMapper};
+use crate::{
+    multiplex_mapper::MultiplexMapper, named_pixel_mapper::NamedPixelMapper,
+    rgb_matrix::MatrixCreationError,
+};
 
 /// A pixel mapper is a way for you to map pixels of LED matrixes to a different
 /// layout. If you have an implementation of a [`PixelMapper`], you can give it
@@ -14,7 +17,11 @@ impl PixelMapper {
     /// visible (width, height) after the mapping.
     /// E.g. a 90 degree rotation might map matrix=(64, 32) -> visible=(32, 64)
     /// Some multiplexing matrices will double the height and half the width.
-    pub(crate) fn get_size_mapping(&self, matrix_width: usize, matrix_height: usize) -> [usize; 2] {
+    pub(crate) fn get_size_mapping(
+        &self,
+        matrix_width: usize,
+        matrix_height: usize,
+    ) -> Result<[usize; 2], MatrixCreationError> {
         match self {
             PixelMapper::Multiplex(mapper) => mapper.get_size_mapping(matrix_width, matrix_height),
             PixelMapper::Named(mapper) => mapper.get_size_mapping(matrix_width, matrix_height),

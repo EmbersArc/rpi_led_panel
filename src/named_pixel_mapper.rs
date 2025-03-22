@@ -1,5 +1,7 @@
 use std::{error::Error, str::FromStr};
 
+use crate::rgb_matrix::MatrixCreationError;
+
 /// Enum representing different pixel mapping options for mapping the logical layout of your boards
 /// to your physical arrangement. These options allow you to customize the mapping to match your unique setup.
 ///
@@ -82,13 +84,19 @@ impl FromStr for NamedPixelMapperType {
 }
 
 impl NamedPixelMapperType {
-    pub(crate) fn create(self, chain: usize, parallel: usize) -> Box<dyn NamedPixelMapper> {
+    pub(crate) fn create(
+        self,
+        chain: usize,
+        parallel: usize,
+    ) -> Result<Box<dyn NamedPixelMapper>, MatrixCreationError> {
         match self {
-            NamedPixelMapperType::Mirror(horizontal) => Box::new(MirrorPixelMapper { horizontal }),
-            NamedPixelMapperType::Rotate(angle) => Box::new(RotatePixelMapper { angle }),
-            NamedPixelMapperType::UMapper => {
-                Box::new(UArrangeMapper::new_with_parameters(chain, parallel))
+            NamedPixelMapperType::Mirror(horizontal) => {
+                Ok(Box::new(MirrorPixelMapper { horizontal }))
             }
+            NamedPixelMapperType::Rotate(angle) => Ok(Box::new(RotatePixelMapper { angle })),
+            NamedPixelMapperType::UMapper => Ok(Box::new(UArrangeMapper::new_with_parameters(
+                chain, parallel,
+            )?)),
         }
     }
 }
@@ -98,7 +106,11 @@ impl NamedPixelMapperType {
 /// to the [`RGBMatrix::apply_pixel_mapper`], which then presents you a canvas
 /// that has the new [`visible_width`], [`visible_height`].
 pub(crate) trait NamedPixelMapper {
-    fn get_size_mapping(&self, matrix_width: usize, matrix_height: usize) -> [usize; 2];
+    fn get_size_mapping(
+        &self,
+        matrix_width: usize,
+        matrix_height: usize,
+    ) -> Result<[usize; 2], MatrixCreationError>;
 
     fn map_visible_to_matrix(
         &self,
@@ -114,8 +126,12 @@ struct MirrorPixelMapper {
 }
 
 impl NamedPixelMapper for MirrorPixelMapper {
-    fn get_size_mapping(&self, matrix_width: usize, matrix_height: usize) -> [usize; 2] {
-        [matrix_width, matrix_height]
+    fn get_size_mapping(
+        &self,
+        matrix_width: usize,
+        matrix_height: usize,
+    ) -> Result<[usize; 2], MatrixCreationError> {
+        Ok([matrix_width, matrix_height])
     }
 
     fn map_visible_to_matrix(
@@ -138,11 +154,15 @@ struct RotatePixelMapper {
 }
 
 impl NamedPixelMapper for RotatePixelMapper {
-    fn get_size_mapping(&self, matrix_width: usize, matrix_height: usize) -> [usize; 2] {
+    fn get_size_mapping(
+        &self,
+        matrix_width: usize,
+        matrix_height: usize,
+    ) -> Result<[usize; 2], MatrixCreationError> {
         if self.angle % 180 == 0 {
-            [matrix_width, matrix_height]
+            Ok([matrix_width, matrix_height])
         } else {
-            [matrix_height, matrix_width]
+            Ok([matrix_height, matrix_width])
         }
     }
 
@@ -168,30 +188,38 @@ struct UArrangeMapper {
 }
 
 impl UArrangeMapper {
-    fn new_with_parameters(chain: usize, parallel: usize) -> Self {
-        assert!(
-            chain >= 2,
-            "U-mapper: need at least '--chain_length 4' for useful folding"
-        );
-        assert!(
-            chain % 2 == 0,
-            "U-mapper: Chain (--chain_length) needs to be divisible by two"
-        );
-        Self { parallel }
+    fn new_with_parameters(chain: usize, parallel: usize) -> Result<Self, MatrixCreationError> {
+        if chain < 2 {
+            let message = format!(
+                "UArrangeMapper: Chain length needs to be larger than 2 for useful folding"
+            );
+            return Err(MatrixCreationError::PixelMapperError(message));
+        }
+        if chain % 2 != 0 {
+            let message = format!("UArrangeMapper: Chain length needs to be divisible by 2.");
+            return Err(MatrixCreationError::PixelMapperError(message));
+        }
+        Ok(Self { parallel })
     }
 }
 
 impl NamedPixelMapper for UArrangeMapper {
-    fn get_size_mapping(&self, matrix_width: usize, matrix_height: usize) -> [usize; 2] {
+    fn get_size_mapping(
+        &self,
+        matrix_width: usize,
+        matrix_height: usize,
+    ) -> Result<[usize; 2], MatrixCreationError> {
         let visible_width = (matrix_width / 64) * 32; // Div at 32px boundary
         let visible_height = 2 * matrix_height;
         if matrix_height % self.parallel != 0 {
-            eprintln!(
-                "For parallel={} we would expect the height={matrix_height} to be divisible by {}.",
+            let message = format!(
+                "UArrangeMapper: For parallel={} we would expect the \
+                height={matrix_height} to be divisible by {}.",
                 self.parallel, self.parallel
             );
+            return Err(MatrixCreationError::PixelMapperError(message));
         }
-        [visible_width, visible_height]
+        Ok([visible_width, visible_height])
     }
 
     fn map_visible_to_matrix(
