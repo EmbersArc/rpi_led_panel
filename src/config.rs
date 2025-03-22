@@ -18,8 +18,8 @@ pub(crate) const K_BIT_PLANES: usize = 11;
 /// Configuration for an RGB matrix panel controller.
 #[derive(FromArgs, Debug, PartialEq, Eq, Hash)]
 pub struct RGBMatrixConfig {
-    /// the display wiring e.g. "AdafruitHat" or "AdafruitHatPwm". Default: "AdafruitHatPwm"
-    #[argh(option, default = "HardwareMapping::adafruit_hat_pwm()")]
+    /// the display wiring e.g. "Regular", "AdafruitHat", "AdafruitHatPwm", etc. Default: "Regular"
+    #[argh(option, default = "HardwareMapping::regular()")]
     pub hardware_mapping: HardwareMapping,
     /// the number of display rows. Default: 64
     #[argh(option, default = "64")]
