@@ -147,15 +147,21 @@ impl RGBMatrix {
             return Err(MatrixCreationError::TooManyParallelChains(max_parallel));
         }
 
+        let multiplex_mapper = config.multiplexing.as_ref().map(|mapper_type| {
+            // The multiplexers might choose to have a different physical layout.
+            // We need to configure that first before setting up the hardware.
+            let mut mapper = mapper_type.create();
+            mapper.edit_rows_cols(&mut config.rows, &mut config.cols);
+            mapper
+        });
+
         let pixel_designator = PixelDesignator::new(&config.hardware_mapping, config.led_sequence);
         let width = config.cols * config.chain_length;
         let height = config.rows * config.parallel;
         let mut shared_mapper = PixelDesignatorMap::new(pixel_designator, width, height, &config);
 
         // Apply the mapping for the panels first.
-        if let Some(mapper_type) = config.multiplexing.as_ref() {
-            let mut mapper = mapper_type.create();
-            mapper.edit_rows_cols(&mut config.rows, &mut config.cols);
+        if let Some(mapper) = multiplex_mapper {
             let mapper = PixelMapper::Multiplex(mapper);
             shared_mapper =
                 Self::apply_pixel_mapper(&shared_mapper, &mapper, &config, pixel_designator)?;
@@ -321,9 +327,11 @@ impl RGBMatrix {
             for x in 0..new_width {
                 let [orig_x, orig_y] = mapper.map_visible_to_matrix(old_width, old_height, x, y);
                 if orig_x >= old_width || orig_y >= old_height {
-                    return Err(MatrixCreationError::PixelMapperError(
-                        "Invalid dimensions.".to_string(),
-                    ));
+                    println!("Invalid dimensions.");
+                    // return Err(MatrixCreationError::PixelMapperError(
+                    //     "Invalid dimensions.".to_string(),
+                    // ));
+                    continue;
                 }
                 let orig_designator = shared_mapper.get(orig_x, orig_y).unwrap();
                 *new_mapper.get_mut(x, y).unwrap() = *orig_designator;
