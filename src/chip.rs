@@ -27,24 +27,30 @@ impl PiChip {
     /// Try to automatically determine the model.
     #[must_use]
     pub fn determine() -> Option<Self> {
-        // https://www.raspberrypi.org/documentation/hardware/raspberrypi/revision-codes/README.md
         let cpuinfo = read_to_string("/proc/cpuinfo").ok()?;
-        let revision_str = cpuinfo
-            .lines()
-            .find(|line| line.starts_with("Revision"))?
-            .split(' ')
-            .last()?;
 
-        let old_style = revision_str.len() == 4;
-        if old_style {
-            return Some(Self::BCM2708);
-        }
-
-        let revision = u32::from_str_radix(revision_str, 16).ok()?;
-        // Bits: NOQuuuWuFMMMCCCCPPPPTTTTTTTTRRRR
-        //                       ^^^^ processor model
-        let model_bits = (revision >> 12) & 0b1111;
-        match model_bits {
+        let revision_number =
+            if let Some(line) = cpuinfo.lines().find(|line| line.starts_with("Revision")) {
+                // https://www.raspberrypi.org/documentation/hardware/raspberrypi/revision-codes/README.md
+                let revision_str = line.split(' ').last()?;
+                let old_style = revision_str.len() == 4;
+                if old_style {
+                    return Some(Self::BCM2708);
+                }
+                let revision = u32::from_str_radix(revision_str, 16).ok()?;
+                // Bits: NOQuuuWuFMMMCCCCPPPPTTTTTTTTRRRR
+                //                       ^^^^ processor model
+                (revision >> 12) & 0b1111
+            } else if let Some(line) = cpuinfo
+                .lines()
+                .find(|line| line.starts_with("CPU revision"))
+            {
+                let revision_str = line.split(' ').last()?;
+                revision_str.parse().ok()?
+            } else {
+                return None;
+            };
+        match revision_number {
             // BCM2835
             0 => Some(Self::BCM2708),
             // BCM2836
