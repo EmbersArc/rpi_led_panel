@@ -1,5 +1,18 @@
 # Changelog
 
+## Version 0.7.0
+
+### Changed
+
+- Default to `Regular` hardware mapping. The previous default was `AdafruitHat` which now has to be specified with `--hardware-mapping AdafruitHat`.
+- Overall improved error handling. More errors are now returned instead of panicking or printing.
+
+### Fixed
+
+- Fixed a potential panic when multiplexing is enabled.
+- Improved the automatic chip detection on some distributions.
+- Made `NamedPixelMapperType` public. [#16](https://github.com/EmbersArc/rpi_led_panel/pull/16)
+
 ## Version 0.6.0
 
 - Added the `--led-brightness` CLI argument. [#15](https://github.com/EmbersArc/rpi_led_panel/pull/15)
