@@ -327,11 +327,9 @@ impl RGBMatrix {
             for x in 0..new_width {
                 let [orig_x, orig_y] = mapper.map_visible_to_matrix(old_width, old_height, x, y);
                 if orig_x >= old_width || orig_y >= old_height {
-                    println!("Invalid dimensions.");
-                    // return Err(MatrixCreationError::PixelMapperError(
-                    //     "Invalid dimensions.".to_string(),
-                    // ));
-                    continue;
+                    return Err(MatrixCreationError::PixelMapperError(
+                        "Invalid dimensions detected. This is likely a bug.".to_string(),
+                    ));
                 }
                 let orig_designator = shared_mapper.get(orig_x, orig_y).unwrap();
                 *new_mapper.get_mut(x, y).unwrap() = *orig_designator;
