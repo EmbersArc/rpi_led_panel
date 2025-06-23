@@ -32,7 +32,7 @@ impl PiChip {
         let revision_number =
             if let Some(line) = cpuinfo.lines().find(|line| line.starts_with("Revision")) {
                 // https://www.raspberrypi.org/documentation/hardware/raspberrypi/revision-codes/README.md
-                let revision_str = line.split(' ').last()?;
+                let revision_str = line.split(' ').next_back()?;
                 let old_style = revision_str.len() == 4;
                 if old_style {
                     return Some(Self::BCM2708);
@@ -45,7 +45,7 @@ impl PiChip {
                 .lines()
                 .find(|line| line.starts_with("CPU revision"))
             {
-                let revision_str = line.split(' ').last()?;
+                let revision_str = line.split(' ').next_back()?;
                 revision_str.parse().ok()?
             } else {
                 return None;

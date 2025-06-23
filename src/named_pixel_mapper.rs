@@ -190,13 +190,13 @@ struct UArrangeMapper {
 impl UArrangeMapper {
     fn new_with_parameters(chain: usize, parallel: usize) -> Result<Self, MatrixCreationError> {
         if chain < 2 {
-            let message = format!(
+            let message =
                 "UArrangeMapper: Chain length needs to be larger than 2 for useful folding"
-            );
+                    .to_string();
             return Err(MatrixCreationError::PixelMapperError(message));
         }
         if chain % 2 != 0 {
-            let message = format!("UArrangeMapper: Chain length needs to be divisible by 2.");
+            let message = "UArrangeMapper: Chain length needs to be divisible by 2.".to_string();
             return Err(MatrixCreationError::PixelMapperError(message));
         }
         Ok(Self { parallel })
