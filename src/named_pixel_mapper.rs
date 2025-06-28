@@ -45,6 +45,17 @@ pub enum NamedPixelMapperType {
     ///   [<][<][<][<]  }--- Pi connector #2
     ///   [>][>][>][>]
     UMapper,
+
+    /// The `ChainLink` represents a pixel mapping strategy where a long chain
+    /// of display panels is arranged in a linear, single-direction chain.
+    ///
+    /// For instance, a chain consisting of 12 panels, with 4 panels
+    /// (`chain_length` = 4, `parallel` = 3) per connector, can be represented as follows:
+    ///   [>][>][>][>] [>][>][>][>] [>][>][>][>]
+    ///    │            │            └─ Pi connector #3
+    ///    │            └─ Pi connector #2
+    ///    └─> Pi connector #1
+    ChainLink,
 }
 
 impl FromStr for NamedPixelMapperType {
@@ -77,6 +88,8 @@ impl FromStr for NamedPixelMapperType {
             }
         } else if s == "U-mapper" {
             Ok(Self::UMapper)
+        } else if s == "ChainLink" {
+            Ok(Self::ChainLink)
         } else {
             Err(format!("'{s}' is not a valid Pixel mapping.").into())
         }
@@ -97,6 +110,9 @@ impl NamedPixelMapperType {
             NamedPixelMapperType::UMapper => Ok(Box::new(UArrangeMapper::new_with_parameters(
                 chain, parallel,
             )?)),
+            NamedPixelMapperType::ChainLink => {
+                Ok(Box::new(ChainLinkMapper::new_with_parameters(parallel)?))
+            }
         }
     }
 }
@@ -244,5 +260,38 @@ impl NamedPixelMapper for UArrangeMapper {
         };
 
         [matrix_x, base_y + matrix_y]
+    }
+}
+
+struct ChainLinkMapper {
+    parallel: usize,
+}
+
+impl ChainLinkMapper {
+    fn new_with_parameters(parallel: usize) -> Result<Self, MatrixCreationError> {
+        Ok(Self { parallel })
+    }
+}
+
+impl NamedPixelMapper for ChainLinkMapper {
+    fn get_size_mapping(
+        &self,
+        matrix_width: usize,
+        matrix_height: usize,
+    ) -> Result<[usize; 2], MatrixCreationError> {
+        Ok([matrix_width * self.parallel, matrix_height / self.parallel])
+    }
+
+    fn map_visible_to_matrix(
+        &self,
+        matrix_width: usize,
+        matrix_height: usize,
+        visible_x: usize,
+        visible_y: usize,
+    ) -> [usize; 2] {
+        [
+            visible_x % matrix_width,
+            (matrix_height / self.parallel) * (visible_x / matrix_width) + visible_y,
+        ]
     }
 }
