@@ -1,3 +1,5 @@
+use crate::error::InvalidVariantError;
+
 use std::{error::Error, ops::BitOr, str::FromStr};
 
 use crate::gpio_bits;
@@ -92,14 +94,27 @@ impl FromStr for HardwareMapping {
     type Err = Box<dyn Error>;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "AdafruitHat" => Ok(Self::adafruit_hat()),
-            "AdafruitHatPwm" => Ok(Self::adafruit_hat_pwm()),
-            "Regular" => Ok(Self::regular()),
-            "RegularPi1" => Ok(Self::regular_pi1()),
-            "Classic" => Ok(Self::classic()),
-            "ClassicPi1" => Ok(Self::classic_pi1()),
-            _ => Err(format!("'{s}' is not a valid GPIO mapping.").into()),
+        #[derive(strum::EnumString, strum::VariantNames)]
+        #[strum(
+            parse_err_fn = InvalidVariantError::new::<Self>,
+            parse_err_ty = InvalidVariantError
+        )]
+        enum HardwareMappingNames {
+            AdafruitHat,
+            AdafruitHatPwm,
+            Regular,
+            RegularPi1,
+            Classic,
+            ClassicPi1,
+        }
+        let mapping = HardwareMappingNames::from_str(s)?;
+        match mapping {
+            HardwareMappingNames::AdafruitHat => Ok(Self::adafruit_hat()),
+            HardwareMappingNames::AdafruitHatPwm => Ok(Self::adafruit_hat_pwm()),
+            HardwareMappingNames::Regular => Ok(Self::regular()),
+            HardwareMappingNames::RegularPi1 => Ok(Self::regular_pi1()),
+            HardwareMappingNames::Classic => Ok(Self::classic()),
+            HardwareMappingNames::ClassicPi1 => Ok(Self::classic_pi1()),
         }
     }
 }

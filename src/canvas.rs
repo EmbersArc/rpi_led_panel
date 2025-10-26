@@ -1,8 +1,6 @@
-use std::{error::Error, str::FromStr};
-
 use crate::{
-    color::ColorLookup, config::K_BIT_PLANES, gpio::Gpio, hardware_mapping::HardwareMapping,
-    row_address_setter::RowAddressSetter, RGBMatrixConfig,
+    color::ColorLookup, config::K_BIT_PLANES, error::InvalidVariantError, gpio::Gpio,
+    hardware_mapping::HardwareMapping, row_address_setter::RowAddressSetter, RGBMatrixConfig,
 };
 
 #[derive(Clone, Copy)]
@@ -12,7 +10,14 @@ pub(crate) enum Channel {
     Third,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, strum::EnumString, strum::VariantNames,
+)]
+#[strum(serialize_all = "UPPERCASE")]
+#[strum(
+    parse_err_fn = InvalidVariantError::new::<Self>,
+    parse_err_ty = InvalidVariantError
+)]
 pub enum LedSequence {
     #[default]
     Rgb,
@@ -21,23 +26,6 @@ pub enum LedSequence {
     Gbr,
     Brg,
     Bgr,
-}
-
-impl FromStr for LedSequence {
-    type Err = Box<dyn Error>;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let ok = match s.to_uppercase().as_str() {
-            "RGB" => Self::Rgb,
-            "RBG" => Self::Rbg,
-            "GRB" => Self::Grb,
-            "GBR" => Self::Gbr,
-            "BRG" => Self::Brg,
-            "BGR" => Self::Bgr,
-            other => return Err(format!("Invalid LED sequence: {other}").into()),
-        };
-        Ok(ok)
-    }
 }
 
 impl LedSequence {

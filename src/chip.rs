@@ -1,26 +1,22 @@
-use std::{error::Error, fs::read_to_string, str::FromStr};
+use std::fs::read_to_string;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+use crate::error::InvalidVariantError;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, strum::EnumString, strum::VariantNames)]
+#[strum(
+    parse_err_fn = InvalidVariantError::new::<Self>,
+    parse_err_ty = InvalidVariantError
+)]
 pub enum PiChip {
     /// Model 0 and 1
+    #[strum(serialize = "BCM2708", serialize = "BCM2835")]
     BCM2708,
     /// Models 2 and 3
+    #[strum(serialize = "BCM2709", serialize = "BCM2836", serialize = "BCM2837")]
     BCM2709,
     /// Model 4
+    #[strum(serialize = "BCM2711")]
     BCM2711,
-}
-
-impl FromStr for PiChip {
-    type Err = Box<dyn Error>;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_uppercase().as_str() {
-            "BCM2708" | "BCM2835" => Ok(Self::BCM2708),
-            "BCM2709" | "BCM2836" | "BCM2837" => Ok(Self::BCM2709),
-            "BCM2711" => Ok(Self::BCM2711),
-            _ => Err(format!("'{s}' is not a valid chip model.").into()),
-        }
-    }
 }
 
 impl PiChip {

@@ -1,8 +1,10 @@
-use std::{error::Error, str::FromStr};
+use crate::{error::InvalidVariantError, rgb_matrix::MatrixCreationError};
 
-use crate::rgb_matrix::MatrixCreationError;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumString, strum::VariantNames)]
+#[strum(
+    parse_err_fn = InvalidVariantError::new::<Self>,
+    parse_err_ty = InvalidVariantError
+)]
 pub enum MultiplexMapperType {
     Stripe,
     Checkered,
@@ -22,34 +24,6 @@ pub enum MultiplexMapperType {
     P8Outdoor1R1G1B,
     FlippedStripe,
     P10Outdoor32x16HalfScan,
-}
-
-impl FromStr for MultiplexMapperType {
-    type Err = Box<dyn Error>;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "Stripe" => Ok(Self::Stripe),
-            "Checkered" => Ok(Self::Checkered),
-            "Spiral" => Ok(Self::Spiral),
-            "ZStripe08" => Ok(Self::ZStripe08),
-            "ZStripe44" => Ok(Self::ZStripe44),
-            "ZStripe80" => Ok(Self::ZStripe80),
-            "Coreman" => Ok(Self::Coreman),
-            "Kaler2Scan" => Ok(Self::Kaler2Scan),
-            "P10Z" => Ok(Self::P10Z),
-            "QiangLiQ8" => Ok(Self::QiangLiQ8),
-            "InversedZStripe" => Ok(Self::InversedZStripe),
-            "P10Outdoor1R1G1B1" => Ok(Self::P10Outdoor1R1G1B1),
-            "P10Outdoor1R1G1B2" => Ok(Self::P10Outdoor1R1G1B2),
-            "P10Outdoor1R1G1B3" => Ok(Self::P10Outdoor1R1G1B3),
-            "P10Coreman" => Ok(Self::P10Coreman),
-            "P8Outdoor1R1G1B" => Ok(Self::P8Outdoor1R1G1B),
-            "FlippedStripe" => Ok(Self::FlippedStripe),
-            "P10Outdoor32x16HalfScan" => Ok(Self::P10Outdoor32x16HalfScan),
-            other => Err(format!("'{other}' is not a valid GPIO mapping.").into()),
-        }
-    }
 }
 
 impl MultiplexMapperType {

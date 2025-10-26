@@ -1,23 +1,13 @@
-use std::{error::Error, str::FromStr};
+use crate::{error::InvalidVariantError, gpio::Gpio, gpio_bits, RGBMatrixConfig};
 
-use crate::{gpio::Gpio, gpio_bits, RGBMatrixConfig};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumString, strum::VariantNames)]
+#[strum(
+    parse_err_fn = InvalidVariantError::new::<Self>,
+    parse_err_ty = InvalidVariantError
+)]
 pub enum PanelType {
     FM6126,
     FM6127,
-}
-
-impl FromStr for PanelType {
-    type Err = Box<dyn Error>;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_uppercase().as_str() {
-            "FM6126" => Ok(Self::FM6126),
-            "FM6127" => Ok(Self::FM6127),
-            _ => Err(format!("'{s}' is not a valid panel type.").into()),
-        }
-    }
 }
 
 impl PanelType {

@@ -1,29 +1,16 @@
-use std::{error::Error, str::FromStr};
+use crate::{error::InvalidVariantError, gpio::Gpio, RGBMatrixConfig};
 
-use crate::{gpio::Gpio, RGBMatrixConfig};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumString, strum::VariantNames)]
+#[strum(
+    parse_err_fn = InvalidVariantError::new::<Self>,
+    parse_err_ty = InvalidVariantError
+)]
 pub enum RowAddressSetterType {
     Direct,
     ShiftRegister,
     DirectABCDLine,
     ABCShiftRegister,
     SM5266,
-}
-
-impl FromStr for RowAddressSetterType {
-    type Err = Box<dyn Error>;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "direct" => Ok(Self::Direct),
-            "shiftregister" => Ok(Self::ShiftRegister),
-            "directabcdline" => Ok(Self::DirectABCDLine),
-            "abcshiftregister" => Ok(Self::ABCShiftRegister),
-            "sm5266" => Ok(Self::SM5266),
-            _ => Err(format!("'{s}' is not a valid row address setter type.").into()),
-        }
-    }
 }
 
 impl RowAddressSetterType {
