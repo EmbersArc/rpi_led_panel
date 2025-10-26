@@ -339,6 +339,7 @@ impl RGBMatrix {
     }
 
     /// Updates the matrix with the new canvas. Blocks until the end of the current frame.
+    /// This returns a cleared canvas that has to be drawn to before calling this function again.
     pub fn update_on_vsync(&mut self, canvas: Box<Canvas>) -> Box<Canvas> {
         let Self {
             canvas_to_thread_sender,
