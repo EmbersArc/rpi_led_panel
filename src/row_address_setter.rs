@@ -1,4 +1,4 @@
-use crate::{error::InvalidVariantError, gpio::Gpio, RGBMatrixConfig};
+use crate::{RGBMatrixConfig, error::InvalidVariantError, gpio::Gpio};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumString, strum::VariantNames)]
 #[strum(

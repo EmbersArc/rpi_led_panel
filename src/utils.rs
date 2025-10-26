@@ -4,7 +4,7 @@ use std::{
     time::Instant,
 };
 
-use libc::{cpu_set_t, sched_setaffinity, CPU_SET};
+use libc::{CPU_SET, cpu_set_t, sched_setaffinity};
 
 /// Sets the bits that are passed as arguments.
 #[macro_export]

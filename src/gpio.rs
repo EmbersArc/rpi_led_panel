@@ -4,6 +4,7 @@ use std::{
 };
 
 use crate::{
+    RGBMatrixConfig,
     chip::PiChip,
     config::K_BIT_PLANES,
     gpio_bits,
@@ -11,7 +12,6 @@ use crate::{
     registers::{ClkRegisters, GPIOFunction, GPIORegisters, PWMRegisters, TimeRegisters},
     row_address_setter::RowAddressSetter,
     utils::linux_has_module_loaded,
-    RGBMatrixConfig,
 };
 
 #[derive(Debug)]

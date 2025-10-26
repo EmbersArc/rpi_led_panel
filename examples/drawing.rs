@@ -1,12 +1,12 @@
 use std::io::Write;
 
 use embedded_graphics::{
-    mono_font::{ascii::FONT_6X10, MonoTextStyle},
+    Drawable,
+    mono_font::{MonoTextStyle, ascii::FONT_6X10},
     pixelcolor::Rgb888,
     prelude::*,
     primitives::{Circle, Line, PrimitiveStyle},
     text::{Alignment, Text},
-    Drawable,
 };
 use rpi_led_panel::{RGBMatrix, RGBMatrixConfig};
 

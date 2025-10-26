@@ -1,10 +1,10 @@
 use std::io::Write;
 
 use embedded_graphics::{
+    Drawable,
     image::{Image, ImageRawBE},
     pixelcolor::Rgb888,
     prelude::*,
-    Drawable,
 };
 use rpi_led_panel::{RGBMatrix, RGBMatrixConfig};
 

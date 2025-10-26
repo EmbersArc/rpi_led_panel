@@ -1,24 +1,24 @@
 use std::{
     error::Error,
     fmt::{Display, Formatter},
-    fs::{write, OpenOptions},
+    fs::{OpenOptions, write},
     mem::replace,
     sync::mpsc::{
-        channel, sync_channel, Receiver, RecvTimeoutError, Sender, SyncSender, TryRecvError,
+        Receiver, RecvTimeoutError, Sender, SyncSender, TryRecvError, channel, sync_channel,
     },
-    thread::{spawn, JoinHandle},
+    thread::{JoinHandle, spawn},
     time::Duration,
 };
 
-use thread_priority::{set_current_thread_priority, ThreadPriority};
+use thread_priority::{ThreadPriority, set_current_thread_priority};
 
 use crate::{
+    RGBMatrixConfig,
     canvas::{Canvas, PixelDesignator, PixelDesignatorMap},
     chip::PiChip,
     gpio::{Gpio, GpioInitializationError},
     pixel_mapper::PixelMapper,
-    utils::{linux_has_isol_cpu, set_thread_affinity, FrameRateMonitor},
-    RGBMatrixConfig,
+    utils::{FrameRateMonitor, linux_has_isol_cpu, set_thread_affinity},
 };
 
 fn initialize_update_thread(chip: PiChip) {

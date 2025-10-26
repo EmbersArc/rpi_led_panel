@@ -1,6 +1,6 @@
 use crate::{
-    color::ColorLookup, config::K_BIT_PLANES, error::InvalidVariantError, gpio::Gpio,
-    hardware_mapping::HardwareMapping, row_address_setter::RowAddressSetter, RGBMatrixConfig,
+    RGBMatrixConfig, color::ColorLookup, config::K_BIT_PLANES, error::InvalidVariantError,
+    gpio::Gpio, hardware_mapping::HardwareMapping, row_address_setter::RowAddressSetter,
 };
 
 #[derive(Clone, Copy)]
@@ -341,10 +341,10 @@ impl Canvas {
 pub mod embedded_graphics_support {
     use super::Canvas;
     use embedded_graphics::{
+        Pixel,
         draw_target::DrawTarget,
         pixelcolor::Rgb888,
         prelude::{OriginDimensions, RgbColor, Size},
-        Pixel,
     };
 
     impl OriginDimensions for Canvas {

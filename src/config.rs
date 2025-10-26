@@ -1,9 +1,9 @@
 use argh::FromArgs;
 
 use crate::{
-    canvas::LedSequence, init_sequence::PanelType, multiplex_mapper::MultiplexMapperType,
-    named_pixel_mapper::NamedPixelMapperType, row_address_setter::RowAddressSetterType,
-    HardwareMapping, PiChip,
+    HardwareMapping, PiChip, canvas::LedSequence, init_sequence::PanelType,
+    multiplex_mapper::MultiplexMapperType, named_pixel_mapper::NamedPixelMapperType,
+    row_address_setter::RowAddressSetterType,
 };
 
 /// Typically, a Hub75 panel is split in two half displays, so that a 1:16 multiplexing actually multiplexes
