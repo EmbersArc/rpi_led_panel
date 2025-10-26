@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use embedded_graphics::{
+use rpi_led_panel::embedded_graphics::{
     Drawable,
     image::{Image, ImageRawBE},
     pixelcolor::Rgb888,

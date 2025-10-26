@@ -24,3 +24,6 @@ pub use multiplex_mapper::MultiplexMapperType;
 pub use named_pixel_mapper::NamedPixelMapperType;
 pub use rgb_matrix::RGBMatrix;
 pub use row_address_setter::RowAddressSetterType;
+
+#[cfg(feature = "drawing")]
+pub use embedded_graphics;

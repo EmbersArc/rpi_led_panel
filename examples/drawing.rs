@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use embedded_graphics::{
+use rpi_led_panel::embedded_graphics::{
     Drawable,
     mono_font::{MonoTextStyle, ascii::FONT_6X10},
     pixelcolor::Rgb888,
