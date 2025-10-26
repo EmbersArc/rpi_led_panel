@@ -353,9 +353,15 @@ impl RGBMatrix {
 
         frame_rate_monitor.update();
 
-        canvas_from_thread_receiver
+        let mut canvas = canvas_from_thread_receiver
             .recv()
-            .expect("Display update thread shut down unexpectedly.")
+            .expect("Display update thread shut down unexpectedly.");
+
+        // Clear the canvas before handing it back to the user.
+        // There is no practical use for not clearing it here as we switch
+        // back and forth between two canvases.
+        canvas.fill(0, 0, 0);
+        canvas
     }
 
     /// Get the bits that were available for input.
