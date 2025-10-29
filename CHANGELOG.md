@@ -1,5 +1,24 @@
 # Changelog
 
+### Version 0.8.0
+
+### Added
+
+- Added the `ChainLink` pixel mapper. [#19](https://github.com/EmbersArc/rpi_led_panel/pull/19)
+
+### Changed
+
+- Improved the argument parsing and print available options when entering an invalid option.
+- Clear the canvas before returning it to the user to avoid confusion behavior.
+- Improve the documentation of `update_on_vsync`.
+- Re-export `embedded_graphics` if the `drawing` feature is enabled.
+- Updated dependencies.
+- Updated to the 2024 edition.
+
+### Breaking
+
+- The parser is a bit stricter about capitalization as a consequence of the improved argument parsing.
+
 ## Version 0.7.0
 
 ### Changed
