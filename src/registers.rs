@@ -1,9 +1,4 @@
-use std::{
-    fs::OpenOptions,
-    rc::Rc,
-    thread::{sleep, yield_now},
-    time::Duration,
-};
+use std::{fs::OpenOptions, rc::Rc, thread::sleep, time::Duration};
 
 use memmap2::{MmapMut, MmapOptions};
 
@@ -201,7 +196,7 @@ impl TimeRegisters {
         let end_time = self.get_time() + duration_us;
         self.sleep_at_most(duration_us);
         while self.get_time() < end_time {
-            yield_now();
+            std::hint::spin_loop();
         }
     }
 

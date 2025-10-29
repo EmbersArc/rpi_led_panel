@@ -107,7 +107,7 @@ impl PinPulser {
 
         while !pwm_registers.fifo_empty() {
             // busy wait until done.
-            std::thread::yield_now();
+            std::hint::spin_loop();
         }
 
         pwm_registers.reset_pwm();
