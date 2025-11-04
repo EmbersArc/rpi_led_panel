@@ -1,5 +1,11 @@
 # Changelog
 
+### Version 0.8.1
+
+### Changed
+
+- Improve busy-wait loop and avoid sleeping for too long by picking a more conservative minimum sleep duration. This may increase CPU usage but avoids flickering.
+
 ### Version 0.8.0
 
 ### Added
