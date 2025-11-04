@@ -1,8 +1,8 @@
-use std::{fs::OpenOptions, rc::Rc, thread::sleep, time::Duration};
+use std::{fs, rc::Rc, time};
 
 use memmap2::{MmapMut, MmapOptions};
 
-use crate::chip::PiChip;
+use crate::{chip::PiChip, utils::sleep_at_most};
 
 // See https://elinux.org/BCM2835_registers
 
@@ -96,7 +96,7 @@ impl GPIOFunction {
 }
 
 pub fn mmap_bcm_register(chip: PiChip, offset: u64, size_bytes: usize) -> Rc<MmapMut> {
-    let file = OpenOptions::new()
+    let file = fs::OpenOptions::new()
         .read(true)
         .write(true)
         .open("/dev/mem")
@@ -156,8 +156,6 @@ const ST_OFFSET: u64 = 0x3000;
 const ST_SIZE_BYTES: usize = 28;
 const ST_CLO: usize = 0x4;
 
-const MIN_SYS_SLEEP_TIME_US: u64 = 100;
-
 /// Required to read `ST_CLO` and the adjacent `ST_CHI`.
 /// This has to be a struct so that we can have a fixed memory layout.
 #[repr(C)]
@@ -175,35 +173,25 @@ impl TimeRegister {
 // Time measurement.
 pub(crate) struct TimeRegisters {
     time: MmapPtr<TimeRegister>,
-    sleep_factor: f32,
 }
 
 impl TimeRegisters {
     pub(crate) fn new(chip: PiChip) -> Self {
         let map = mmap_bcm_register(chip, ST_OFFSET, ST_SIZE_BYTES);
         let time = MmapPtr::new(map, ST_CLO);
-        Self {
-            time,
-            sleep_factor: 0.4,
-        }
+        Self { time }
     }
 
+    #[inline]
     pub(crate) fn get_time(&self) -> u64 {
         self.time.read().get_u64()
     }
 
     pub(crate) fn sleep(&mut self, duration_us: u64) {
         let end_time = self.get_time() + duration_us;
-        self.sleep_at_most(duration_us);
+        sleep_at_most(time::Duration::from_micros(duration_us));
         while self.get_time() < end_time {
             std::hint::spin_loop();
-        }
-    }
-
-    pub(crate) fn sleep_at_most(&mut self, duration_us: u64) {
-        if duration_us > MIN_SYS_SLEEP_TIME_US {
-            let sys_sleep_time = (duration_us as f32 * self.sleep_factor) as u64;
-            sleep(Duration::from_micros(sys_sleep_time));
         }
     }
 }

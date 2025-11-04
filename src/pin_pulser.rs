@@ -1,6 +1,7 @@
 use crate::{
     gpio_bits,
     registers::{ClkRegisters, GPIOFunction, GPIORegisters, PWMRegisters, TimeRegisters},
+    utils::sleep_at_most,
 };
 
 const PWM_BASE_TIME_NS: u32 = 2;
@@ -103,7 +104,7 @@ impl PinPulser {
 
         let already_elapsed_us = time_registers.get_time() - pulse.start_time;
         let remaining_time_us = u64::from(pulse.sleep_hint_us).saturating_sub(already_elapsed_us);
-        time_registers.sleep_at_most(remaining_time_us);
+        sleep_at_most(std::time::Duration::from_micros(remaining_time_us));
 
         while !pwm_registers.fifo_empty() {
             // busy wait until done.

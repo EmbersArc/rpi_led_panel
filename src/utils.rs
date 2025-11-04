@@ -1,7 +1,7 @@
 use std::{
     fs::File,
     io::{BufRead, BufReader},
-    time::Instant,
+    thread, time,
 };
 
 use libc::{CPU_SET, cpu_set_t, sched_setaffinity};
@@ -51,7 +51,7 @@ const WINDOW_LENGTH: usize = 60;
 pub(crate) struct FrameRateMonitor {
     times: [f32; WINDOW_LENGTH],
     index: usize,
-    last_time: Option<Instant>,
+    last_time: Option<time::Instant>,
 }
 
 impl FrameRateMonitor {
@@ -65,14 +65,22 @@ impl FrameRateMonitor {
 
     pub(crate) fn update(&mut self) {
         if let Some(last_time) = self.last_time.take() {
-            self.times[self.index % WINDOW_LENGTH] = last_time.elapsed().as_secs_f32();
-            self.index += 1;
+            self.times[self.index] = last_time.elapsed().as_secs_f32();
+            self.index = (self.index + 1) % WINDOW_LENGTH;
         }
-        self.last_time = Some(Instant::now());
+        self.last_time = Some(time::Instant::now());
     }
 
     pub(crate) fn get_fps(&self) -> f32 {
         WINDOW_LENGTH as f32 / self.times.iter().sum::<f32>()
+    }
+}
+
+/// Sleep for as long as we are confortable without overshooting.
+pub(crate) fn sleep_at_most(duration: time::Duration) {
+    const MIN_SYS_SLEEP_TIME: time::Duration = time::Duration::from_micros(200);
+    if duration > MIN_SYS_SLEEP_TIME {
+        thread::sleep(duration);
     }
 }
 
