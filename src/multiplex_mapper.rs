@@ -640,7 +640,7 @@ impl MultiplexMapper for InversedZStripe {
         let tile_width = 8;
         let tile_height = 4;
 
-        let vert_block_is_even = (y / tile_height) % 2 == 0;
+        let vert_block_is_even = (y / tile_height).is_multiple_of(2);
         let even_offset: [usize; 8] = [15, 13, 11, 9, 7, 5, 3, 1];
 
         let matrix_x = x
@@ -705,7 +705,7 @@ impl MultiplexMapper for P10Outdoor1R1G1BMultiplexMapper1 {
     }
 
     fn map_single_panel(&self, x: usize, y: usize) -> [usize; 2] {
-        let vblock_is_even = (y / P10_TILE_HEIGHT) % 2 == 0;
+        let vblock_is_even = (y / P10_TILE_HEIGHT).is_multiple_of(2);
 
         let matrix_x = P10_TILE_WIDTH
             * (1 + usize::from(vblock_is_even) + 2 * (x / P10_TILE_WIDTH))
@@ -755,7 +755,7 @@ impl MultiplexMapper for P10Outdoor1R1G1BMultiplexMapper2 {
     }
 
     fn map_single_panel(&self, x: usize, y: usize) -> [usize; 2] {
-        let vblock_is_even = (y / P10_TILE_HEIGHT) % 2 == 0;
+        let vblock_is_even = (y / P10_TILE_HEIGHT).is_multiple_of(2);
         let even_vblock_shift = usize::from(vblock_is_even) * P10_EVEN_VBLOCK_OFFSET;
         let odd_vblock_shift = usize::from(!vblock_is_even) * P10_ODD_VBLOCK_OFFSET;
 
@@ -808,7 +808,7 @@ impl MultiplexMapper for P10Outdoor1R1G1BMultiplexMapper3 {
     }
 
     fn map_single_panel(&self, x: usize, y: usize) -> [usize; 2] {
-        let vblock_is_even = (y / P10_TILE_HEIGHT) % 2 == 0;
+        let vblock_is_even = (y / P10_TILE_HEIGHT).is_multiple_of(2);
         let even_vblock_shift = usize::from(vblock_is_even) * P10_EVEN_VBLOCK_OFFSET;
         let odd_vblock_shift = usize::from(!vblock_is_even) * P10_ODD_VBLOCK_OFFSET;
 
@@ -918,8 +918,8 @@ impl MultiplexMapper for P10Outdoor32x16HalfScanMapper {
         let dx = x % 8;
 
         let matrix_y = if y / 8 == 0 {
-            if y % 2 == 0 { 0 } else { 1 }
-        } else if y % 2 == 0 {
+            if y.is_multiple_of(2) { 0 } else { 1 }
+        } else if y.is_multiple_of(2) {
             2
         } else {
             3
@@ -979,7 +979,7 @@ impl MultiplexMapper for P8Outdoor1R1G1BMultiplexMapper {
     }
 
     fn map_single_panel(&self, x: usize, y: usize) -> [usize; 2] {
-        let vblock_is_even = (y / P10_TILE_HEIGHT) % 2 == 0;
+        let vblock_is_even = (y / P10_TILE_HEIGHT).is_multiple_of(2);
         let matrix_x = if vblock_is_even {
             P8_TILE_WIDTH * (1 + P8_TILE_WIDTH - 2 * (x / P8_TILE_WIDTH)) + P8_TILE_WIDTH
                 - (x % P8_TILE_WIDTH)

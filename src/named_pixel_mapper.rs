@@ -175,7 +175,7 @@ impl NamedPixelMapper for RotatePixelMapper {
         matrix_width: usize,
         matrix_height: usize,
     ) -> Result<[usize; 2], MatrixCreationError> {
-        if self.angle % 180 == 0 {
+        if self.angle.is_multiple_of(180) {
             Ok([matrix_width, matrix_height])
         } else {
             Ok([matrix_height, matrix_width])
@@ -211,7 +211,7 @@ impl UArrangeMapper {
                     .to_string();
             return Err(MatrixCreationError::PixelMapperError(message));
         }
-        if chain % 2 != 0 {
+        if !chain.is_multiple_of(2) {
             let message = "UArrangeMapper: Chain length needs to be divisible by 2.".to_string();
             return Err(MatrixCreationError::PixelMapperError(message));
         }
@@ -227,7 +227,7 @@ impl NamedPixelMapper for UArrangeMapper {
     ) -> Result<[usize; 2], MatrixCreationError> {
         let visible_width = (matrix_width / 64) * 32; // Div at 32px boundary
         let visible_height = 2 * matrix_height;
-        if matrix_height % self.parallel != 0 {
+        if !matrix_height.is_multiple_of(self.parallel) {
             let message = format!(
                 "UArrangeMapper: For parallel={} we would expect the \
                 height={matrix_height} to be divisible by {}.",
