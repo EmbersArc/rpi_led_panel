@@ -3,6 +3,8 @@ use std::{
     fmt::{Display, Formatter},
 };
 
+use privdrop::{PrivDrop, PrivDropError};
+
 use crate::{
     RGBMatrixConfig,
     chip::PiChip,
@@ -18,6 +20,7 @@ use crate::{
 pub enum GpioInitializationError {
     OneWireProtocolEnabled,
     SoundModuleLoaded,
+    FailedPrivilegeDrop(PrivDropError),
 }
 
 impl Error for GpioInitializationError {}
@@ -37,7 +40,16 @@ impl Display for GpioInitializationError {
                 `/etc/modprobe.d/alsa-blacklist.conf`\n\
                 Finally, reboot the system and try again.",
             ),
+            GpioInitializationError::FailedPrivilegeDrop(e) => {
+                f.write_str(&format!("Failed to drop privileges. Reason: {}", e))
+            }
         }
+    }
+}
+
+impl From<PrivDropError> for GpioInitializationError {
+    fn from(e: PrivDropError) -> Self {
+        GpioInitializationError::FailedPrivilegeDrop(e)
     }
 }
 
@@ -54,6 +66,7 @@ pub(crate) struct Gpio {
 
 impl Gpio {
     /// Initialize GPIO and loads all registers. Needs root privileges.
+    /// Will result in the application dropping those privileges if privilege dropping is enabled in the config.
     pub(crate) fn new(
         chip: PiChip,
         config: &RGBMatrixConfig,
@@ -67,7 +80,15 @@ impl Gpio {
         let time_registers = TimeRegisters::new(chip);
         let mut pwm_registers = PWMRegisters::new(chip);
         let mut clk_registers = ClkRegisters::new(chip);
-        // TODO: We can drop privileges here.
+
+        // Drop privileges here as we no longer need root.
+        if config.drop_privs {
+            PrivDrop::default()
+                .user(&config.drop_priv_user)
+                .group(&config.drop_priv_group)
+                .fallback_to_ids_if_names_are_numeric()
+                .apply()?;
+        }
 
         // Tell GPIO about all bits we intend to use.
         let mut all_used_bits: u32 = 0;
