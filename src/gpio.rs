@@ -66,6 +66,7 @@ pub(crate) struct Gpio {
 
 impl Gpio {
     /// Initialize GPIO and loads all registers. Needs root privileges.
+    /// Will result in the application dropping those privileges if privilege dropping is enabled in the config.
     pub(crate) fn new(
         chip: PiChip,
         config: &RGBMatrixConfig,

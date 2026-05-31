@@ -125,6 +125,9 @@ impl RGBMatrix {
     /// [`RGBMatrix::receive_new_inputs`]. Only bits that are not already in use for reading or writing by the
     /// matrix are allowed. Use [`RGBMatrix::enabled_input_bits`] after calling this function to check which
     /// bits were actually available.
+    ///
+    /// Note: If privilege dropping is enabled in the config, then calling this function will have the side
+    /// effect of dropping the application's privileges down to the configured user/group.
     pub fn new(
         mut config: RGBMatrixConfig,
         requested_inputs: u32,
