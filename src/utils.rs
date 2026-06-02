@@ -1,10 +1,13 @@
 use std::{
+    ffi::CString,
     fs::File,
     io::{BufRead, BufReader},
     thread, time,
 };
 
-use libc::{CPU_SET, cpu_set_t, sched_setaffinity};
+use libc::{
+    CPU_SET, cpu_set_t, getgrnam, getpwnam, gid_t, sched_setaffinity, setgid, setuid, uid_t,
+};
 
 /// Sets the bits that are passed as arguments.
 #[macro_export]
@@ -44,6 +47,62 @@ pub fn set_thread_affinity(core_id: usize) -> bool {
     let mask = &set;
     let res = unsafe { sched_setaffinity(0, cpusetsize, mask) };
     res != 0
+}
+
+fn get_gid_from_name(group: &str) -> Option<gid_t> {
+    let group_cstr = CString::new(group).unwrap();
+    unsafe {
+        let g = getgrnam(group_cstr.as_ptr());
+        if g.is_null() { None } else { Some((*g).gr_gid) }
+    }
+}
+
+fn set_gid(gid: gid_t) -> bool {
+    unsafe { setgid(gid) == 0 }
+}
+
+fn get_uid_from_name(user: &str) -> Option<uid_t> {
+    let user_cstr = CString::new(user).unwrap();
+    unsafe {
+        let p = getpwnam(user_cstr.as_ptr());
+        if p.is_null() { None } else { Some((*p).pw_uid) }
+    }
+}
+
+fn set_uid(uid: uid_t) -> bool {
+    unsafe { setuid(uid) == 0 }
+}
+
+pub(crate) fn drop_privs(user: &str, group: &str) -> Result<(), String> {
+    // Drop to the provided user / group's privileges.
+    // If provided string is numeric, treat as a GID/UID. Otherwise treat as a group/user name.
+    let gid: gid_t;
+    let uid: uid_t;
+
+    if let Ok(g) = group.parse() {
+        gid = g;
+    } else if let Some(g) = get_gid_from_name(group) {
+        gid = g;
+    } else {
+        return Err(String::from("Failed to get GID for given group"));
+    }
+
+    if let Ok(u) = user.parse() {
+        uid = u;
+    } else if let Some(u) = get_uid_from_name(user) {
+        uid = u;
+    } else {
+        return Err(String::from("Failed to get UID for given user"));
+    }
+
+    if !set_gid(gid) {
+        return Err(String::from("Failed to set GID"));
+    }
+    if !set_uid(uid) {
+        return Err(String::from("Failed to set UID"));
+    }
+
+    Ok(())
 }
 
 const WINDOW_LENGTH: usize = 60;
