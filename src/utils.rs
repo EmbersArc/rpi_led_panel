@@ -61,6 +61,11 @@ fn set_gid(gid: gid_t) -> bool {
     unsafe { setgid(gid) == 0 }
 }
 
+fn set_supplementary_groups(gid: gid_t) -> bool {
+    let groups = [gid];
+    unsafe { libc::setgroups(groups.len(), groups.as_ptr()) == 0 }
+}
+
 fn get_uid_from_name(user: &str) -> Option<uid_t> {
     let user_cstr = CString::new(user).unwrap();
     unsafe {
@@ -79,22 +84,21 @@ pub(crate) fn drop_privs(user: &str, group: &str) -> Result<(), String> {
     let gid: gid_t;
     let uid: uid_t;
 
-    if let Ok(g) = group.parse() {
-        gid = g;
-    } else if let Some(g) = get_gid_from_name(group) {
-        gid = g;
-    } else {
-        return Err(String::from("Failed to get GID for given group"));
-    }
+    gid = group
+        .parse()
+        .ok()
+        .or_else(|| get_gid_from_name(group))
+        .ok_or("Failed to get GID for given group")?;
 
-    if let Ok(u) = user.parse() {
-        uid = u;
-    } else if let Some(u) = get_uid_from_name(user) {
-        uid = u;
-    } else {
-        return Err(String::from("Failed to get UID for given user"));
-    }
+    uid = user
+        .parse()
+        .ok()
+        .or_else(|| get_uid_from_name(user))
+        .ok_or("Failed to get UID for given user")?;
 
+    if !set_supplementary_groups(gid) {
+        return Err(String::from("Failed to set supplementary groups"));
+    }
     if !set_gid(gid) {
         return Err(String::from("Failed to set GID"));
     }
