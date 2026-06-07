@@ -78,19 +78,15 @@ fn set_uid(uid: uid_t) -> bool {
     unsafe { setuid(uid) == 0 }
 }
 
+/// Drop to the provided user / group's privileges.
 pub(crate) fn drop_privs(user: &str, group: &str) -> Result<(), String> {
-    // Drop to the provided user / group's privileges.
-    // If provided string is numeric, treat as a GID/UID. Otherwise treat as a group/user name.
-    let gid: gid_t;
-    let uid: uid_t;
-
-    gid = group
+    let gid: gid_t = group
         .parse()
         .ok()
         .or_else(|| get_gid_from_name(group))
         .ok_or("Failed to get GID for given group")?;
 
-    uid = user
+    let uid: uid_t = user
         .parse()
         .ok()
         .or_else(|| get_uid_from_name(user))
