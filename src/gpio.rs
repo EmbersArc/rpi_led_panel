@@ -3,8 +3,6 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use privdrop::{PrivDrop, PrivDropError};
-
 use crate::{
     RGBMatrixConfig,
     chip::PiChip,
@@ -13,14 +11,14 @@ use crate::{
     pin_pulser::PinPulser,
     registers::{ClkRegisters, GPIOFunction, GPIORegisters, PWMRegisters, TimeRegisters},
     row_address_setter::RowAddressSetter,
-    utils::linux_has_module_loaded,
+    utils::{drop_privs, linux_has_module_loaded},
 };
 
 #[derive(Debug)]
 pub enum GpioInitializationError {
     OneWireProtocolEnabled,
     SoundModuleLoaded,
-    FailedPrivilegeDrop(PrivDropError),
+    FailedPrivilegeDrop(String),
 }
 
 impl Error for GpioInitializationError {}
@@ -44,12 +42,6 @@ impl Display for GpioInitializationError {
                 f.write_str(&format!("Failed to drop privileges. Reason: {}", e))
             }
         }
-    }
-}
-
-impl From<PrivDropError> for GpioInitializationError {
-    fn from(e: PrivDropError) -> Self {
-        GpioInitializationError::FailedPrivilegeDrop(e)
     }
 }
 
@@ -83,11 +75,10 @@ impl Gpio {
 
         // Drop privileges here as we no longer need root.
         if config.drop_privs {
-            PrivDrop::default()
-                .user(&config.drop_priv_user)
-                .group(&config.drop_priv_group)
-                .fallback_to_ids_if_names_are_numeric()
-                .apply()?;
+            let res = drop_privs(&config.drop_priv_user, &config.drop_priv_group);
+            if let Err(s) = res {
+                return Err(GpioInitializationError::FailedPrivilegeDrop(s));
+            }
         }
 
         // Tell GPIO about all bits we intend to use.

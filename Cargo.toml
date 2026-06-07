@@ -32,4 +32,3 @@ embedded-graphics = { version = "0.8.2", optional = true }
 thread-priority = "3.0.0"
 libc = "0.2.184"
 strum = { version = "0.28.0", features = ["derive"] }
-privdrop = "0.5.6"
