@@ -112,7 +112,7 @@ impl RGBMatrixConfig {
 impl Default for RGBMatrixConfig {
     fn default() -> Self {
         Self {
-            hardware_mapping: HardwareMapping::adafruit_hat_pwm(),
+            hardware_mapping: HardwareMapping::regular(),
             rows: 64,
             cols: 64,
             refresh_rate: 120,
