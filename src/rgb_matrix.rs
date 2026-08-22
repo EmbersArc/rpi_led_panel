@@ -236,38 +236,33 @@ impl RGBMatrix {
 
             'thread: loop {
                 let start_time = gpio.get_time();
-                loop {
-                    // Try to receive a shutdown request.
-                    if shutdown_receiver.try_recv() != Err(TryRecvError::Empty) {
-                        break 'thread;
-                    }
-                    // Read input bits and send them if they have changed.
-                    let new_inputs = gpio.read();
-                    if new_inputs != last_gpio_inputs {
-                        match input_sender.send(new_inputs) {
-                            Ok(()) => {}
-                            Err(_) => {
-                                break 'thread;
-                            }
-                        }
-                        last_gpio_inputs = new_inputs;
-                    }
-                    // Wait for a swap canvas.
-                    match canvas_to_thread_receiver.recv_timeout(Duration::from_millis(1)) {
-                        Ok(new_canvas) => {
-                            let old_canvas = replace(&mut thread_canvas, new_canvas);
-                            match canvas_from_thread_sender.send(old_canvas) {
-                                Ok(()) => break,
-                                Err(_) => {
-                                    break 'thread;
-                                }
-                            };
-                        }
-                        Err(RecvTimeoutError::Disconnected) => {
+                // Try to receive a shutdown request.
+                if shutdown_receiver.try_recv() != Err(TryRecvError::Empty) {
+                    break 'thread;
+                }
+                // Read input bits and send them if they have changed.
+                let new_inputs = gpio.read();
+                if new_inputs != last_gpio_inputs {
+                    match input_sender.send(new_inputs) {
+                        Ok(()) => {}
+                        Err(_) => {
                             break 'thread;
                         }
-                        Err(RecvTimeoutError::Timeout) => {}
                     }
+                    last_gpio_inputs = new_inputs;
+                }
+                // Check for a swap canvas.
+                match canvas_to_thread_receiver.recv_timeout(Duration::from_millis(1)) {
+                    Ok(new_canvas) => {
+                        let old_canvas = replace(&mut thread_canvas, new_canvas);
+                        let Ok(()) = canvas_from_thread_sender.send(old_canvas) else {
+                            break 'thread;
+                        };
+                    }
+                    Err(RecvTimeoutError::Disconnected) => {
+                        break 'thread;
+                    }
+                    Err(RecvTimeoutError::Timeout) => {}
                 }
 
                 thread_canvas.dump_to_matrix(
