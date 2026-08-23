@@ -1,10 +1,10 @@
 # Changelog
 
-### Unreleased
+### 0.9.0
 
 ### Added
 
-- Add the option to drop privileges after initialization. [#21](https://github.com/EmbersArc/rpi_led_panel/pull/21) and [#22](https://github.com/EmbersArc/rpi_led_panel/pull/22)
+- Add the option to drop privileges after initialization, enabled by default. [#21](https://github.com/EmbersArc/rpi_led_panel/pull/21) and [#22](https://github.com/EmbersArc/rpi_led_panel/pull/22)
 
 ### Changed
 
