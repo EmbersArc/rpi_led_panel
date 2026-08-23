@@ -6,6 +6,10 @@
 
 - Add the option to drop privileges after initialization. [#21](https://github.com/EmbersArc/rpi_led_panel/pull/21) and [#22](https://github.com/EmbersArc/rpi_led_panel/pull/22)
 
+### Changed
+
+- Keep drawing the last frame, even when no new frame has arrived. [#25](https://github.com/EmbersArc/rpi_led_panel/pull/25)
+
 ### Breaking
 
 - Change the default hardware mapping in `RGBMatrixConfig::default()` to `Regular` to be consistent with the commandline default.
