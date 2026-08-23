@@ -3,9 +3,7 @@ use std::{
     fmt::{Display, Formatter},
     fs::{OpenOptions, write},
     mem::replace,
-    sync::mpsc::{
-        Receiver, RecvTimeoutError, Sender, SyncSender, TryRecvError, channel, sync_channel,
-    },
+    sync::mpsc::{Receiver, Sender, SyncSender, TryRecvError, channel, sync_channel},
     thread::{JoinHandle, spawn},
     time::Duration,
 };
@@ -252,17 +250,17 @@ impl RGBMatrix {
                     last_gpio_inputs = new_inputs;
                 }
                 // Check for a swap canvas.
-                match canvas_to_thread_receiver.recv_timeout(Duration::from_millis(1)) {
+                match canvas_to_thread_receiver.try_recv() {
                     Ok(new_canvas) => {
                         let old_canvas = replace(&mut thread_canvas, new_canvas);
                         let Ok(()) = canvas_from_thread_sender.send(old_canvas) else {
                             break 'thread;
                         };
                     }
-                    Err(RecvTimeoutError::Disconnected) => {
+                    Err(TryRecvError::Disconnected) => {
                         break 'thread;
                     }
-                    Err(RecvTimeoutError::Timeout) => {}
+                    Err(TryRecvError::Empty) => {}
                 }
 
                 thread_canvas.dump_to_matrix(
@@ -338,6 +336,8 @@ impl RGBMatrix {
 
     /// Updates the matrix with the new canvas. Blocks until the end of the current frame.
     /// This returns a cleared canvas that has to be drawn to before calling this function again.
+    /// If this function is not called before the next frame update, the previous
+    /// frame is drawn again.
     pub fn update_on_vsync(&mut self, canvas: Box<Canvas>) -> Box<Canvas> {
         let Self {
             canvas_to_thread_sender,
