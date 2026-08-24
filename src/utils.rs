@@ -1,13 +1,13 @@
+use libc::{
+    CPU_SET, cpu_set_t, getgrnam, getpwnam, gid_t, sched_setaffinity, setgid, setuid, uid_t,
+};
 use std::{
     ffi::CString,
     fs::File,
     io::{BufRead, BufReader},
+    sync::Arc,
+    sync::atomic::{AtomicU32, Ordering},
     thread, time,
-};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
-use libc::{
-    CPU_SET, cpu_set_t, getgrnam, getpwnam, gid_t, sched_setaffinity, setgid, setuid, uid_t,
 };
 
 /// Sets the bits that are passed as arguments.
@@ -132,7 +132,8 @@ impl FrameRateMonitor {
         }
         self.last_time = Some(time::Instant::now());
 
-        self.framerate.store(self.get_fps().to_bits(), Ordering::Relaxed);
+        self.framerate
+            .store(self.get_fps().to_bits(), Ordering::Relaxed);
     }
 
     pub(crate) fn get_fps(&self) -> f32 {

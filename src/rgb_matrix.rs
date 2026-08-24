@@ -3,12 +3,12 @@ use std::{
     fmt::{Display, Formatter},
     fs::{OpenOptions, write},
     mem::replace,
+    sync::Arc,
+    sync::atomic::{AtomicU32, Ordering},
     sync::mpsc::{Receiver, Sender, SyncSender, TryRecvError, channel, sync_channel},
     thread::{JoinHandle, spawn},
     time::Duration,
 };
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
 use thread_priority::{ThreadPriority, set_current_thread_priority};
 
 use crate::{
@@ -295,7 +295,7 @@ impl RGBMatrix {
                 color_clk_mask,
             );
         });
-        
+
         let enabled_input_bits = thread_start_result_receiver
             .recv_timeout(Duration::from_secs(10))
             .map_err(|_| MatrixCreationError::ThreadTimedOut)??;
