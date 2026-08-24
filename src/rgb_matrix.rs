@@ -7,7 +7,8 @@ use std::{
     thread::{JoinHandle, spawn},
     time::Duration,
 };
-
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use thread_priority::{ThreadPriority, set_current_thread_priority};
 
 use crate::{
@@ -112,7 +113,7 @@ pub struct RGBMatrix {
     /// Additional requested inputs that can be received.
     enabled_input_bits: u32,
     /// Frame rate measurement.
-    frame_rate_monitor: FrameRateMonitor,
+    framerate: Arc<AtomicU32>,
 }
 
 impl RGBMatrix {
@@ -195,6 +196,8 @@ impl RGBMatrix {
         let (input_sender, input_receiver) = channel::<u32>();
         let (thread_start_result_sender, thread_start_result_receiver) =
             channel::<Result<u32, MatrixCreationError>>();
+        let framerate = Arc::new(AtomicU32::new(0));
+        let mut frame_rate_monitor = FrameRateMonitor::new(framerate.clone());
 
         let thread_handle = spawn(move || {
             initialize_update_thread(chip);
@@ -272,6 +275,8 @@ impl RGBMatrix {
                 );
                 dither_low_bit_sequence += 1;
 
+                frame_rate_monitor.update();
+
                 // Sleep for the rest of the frame.
                 let now_time = gpio.get_time();
                 let end_time = start_time + frame_time_target_us;
@@ -290,7 +295,7 @@ impl RGBMatrix {
                 color_clk_mask,
             );
         });
-
+        
         let enabled_input_bits = thread_start_result_receiver
             .recv_timeout(Duration::from_secs(10))
             .map_err(|_| MatrixCreationError::ThreadTimedOut)??;
@@ -302,7 +307,7 @@ impl RGBMatrix {
             canvas_to_thread_sender,
             canvas_from_thread_receiver,
             enabled_input_bits,
-            frame_rate_monitor: FrameRateMonitor::new(),
+            framerate,
         };
 
         Ok((rgbmatrix, canvas))
@@ -342,15 +347,12 @@ impl RGBMatrix {
         let Self {
             canvas_to_thread_sender,
             canvas_from_thread_receiver,
-            frame_rate_monitor,
             ..
         } = self;
 
         canvas_to_thread_sender
             .send(canvas)
             .expect("Display update thread shut down unexpectedly.");
-
-        frame_rate_monitor.update();
 
         let mut canvas = canvas_from_thread_receiver
             .recv()
@@ -377,7 +379,7 @@ impl RGBMatrix {
     /// Get the average frame rate over the last 60 frames.
     #[must_use]
     pub fn get_framerate(&self) -> usize {
-        self.frame_rate_monitor.get_fps().round() as usize
+        f32::from_bits(self.framerate.load(Ordering::Relaxed)) as usize
     }
 }
 

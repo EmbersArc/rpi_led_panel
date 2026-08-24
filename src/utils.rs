@@ -4,7 +4,8 @@ use std::{
     io::{BufRead, BufReader},
     thread, time,
 };
-
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use libc::{
     CPU_SET, cpu_set_t, getgrnam, getpwnam, gid_t, sched_setaffinity, setgid, setuid, uid_t,
 };
@@ -111,14 +112,16 @@ pub(crate) struct FrameRateMonitor {
     times: [f32; WINDOW_LENGTH],
     index: usize,
     last_time: Option<time::Instant>,
+    framerate: Arc<AtomicU32>,
 }
 
 impl FrameRateMonitor {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(framerate: Arc<AtomicU32>) -> Self {
         Self {
             times: [1.0 / WINDOW_LENGTH as f32; WINDOW_LENGTH],
             index: 0,
             last_time: None,
+            framerate,
         }
     }
 
@@ -128,6 +131,8 @@ impl FrameRateMonitor {
             self.index = (self.index + 1) % WINDOW_LENGTH;
         }
         self.last_time = Some(time::Instant::now());
+
+        self.framerate.store(self.get_fps().to_bits(), Ordering::Relaxed);
     }
 
     pub(crate) fn get_fps(&self) -> f32 {
