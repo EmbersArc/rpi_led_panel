@@ -133,7 +133,7 @@ impl FrameRateMonitor {
         self.last_time = Some(time::Instant::now());
 
         self.framerate
-            .store(self.get_fps().to_bits(), Ordering::Relaxed);
+            .store(self.get_fps() as u32, Ordering::Relaxed);
     }
 
     pub(crate) fn get_fps(&self) -> f32 {
