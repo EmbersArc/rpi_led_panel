@@ -1,5 +1,12 @@
 # Changelog
 
+## Version 0.9.1
+
+### Fixed 
+- Fix the framerate monitor. [#27](https://github.com/EmbersArc/rpi_led_panel/pull/27)
+- Reworked the rotating square example to avoid black pixels on the square.
+
+
 ## Version 0.9.0
 
 ### Added
