@@ -1,6 +1,6 @@
 # Changelog
 
-### 0.9.0
+## Version 0.9.0
 
 ### Added
 
@@ -14,13 +14,13 @@
 
 - Change the default hardware mapping in `RGBMatrixConfig::default()` to `Regular` to be consistent with the commandline default.
 
-### Version 0.8.1
+## Version 0.8.1
 
 ### Changed
 
 - Improve busy-wait loop and avoid sleeping for too long by picking a more conservative minimum sleep duration. This may increase CPU usage but avoids flickering.
 
-### Version 0.8.0
+## Version 0.8.0
 
 ### Added
 
