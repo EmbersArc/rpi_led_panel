@@ -12,11 +12,9 @@ fn scale_col(value: isize, low: isize, high: isize) -> u8 {
     (255 * (value - low) / (high - low)) as u8
 }
 
-fn rotate([x, y]: [isize; 2], angle: f64) -> [f64; 2] {
-    [
-        x as f64 * angle.cos() - y as f64 * angle.sin(),
-        x as f64 * angle.sin() + y as f64 * angle.cos(),
-    ]
+fn rotate([x, y]: [f64; 2], angle: f64) -> [f64; 2] {
+    let (sin, cos) = angle.sin_cos();
+    [x * cos - y * sin, x * sin + y * cos]
 }
 
 fn main() {
@@ -27,22 +25,20 @@ fn main() {
 
     let [center_x, center_y] = [cols / 2, rows / 2];
 
-    let rotate_square = (rows.min(cols) as f64 * 1.41) as isize;
-    let min_rotate = center_x - rotate_square / 2;
-    let max_rotate = center_x + rotate_square / 2;
-
     let display_square = (rows.min(cols) as f64 * 0.7) as isize;
     let min_display = center_x - display_square / 2;
     let max_display = center_x + display_square / 2;
 
     for step in 0.. {
         let rotation_deg = step as f64 / 2.0;
-        for x in min_rotate..max_rotate {
-            for y in min_rotate..max_rotate {
-                let [rot_x, rot_y] =
-                    rotate([x - center_x, y - center_x], rotation_deg.to_radians());
-                let canvas_x = rot_x + center_x as f64;
-                let canvas_y = rot_y + center_y as f64;
+        for canvas_x in 0..cols {
+            for canvas_y in 0..rows {
+                let [src_x, src_y] = rotate(
+                    [(canvas_x - center_x) as f64, (canvas_y - center_y) as f64],
+                    -rotation_deg.to_radians(),
+                );
+                let x = (src_x + center_x as f64).round() as isize;
+                let y = (src_y + center_y as f64).round() as isize;
                 if (min_display..max_display).contains(&x)
                     && (min_display..max_display).contains(&y)
                 {
