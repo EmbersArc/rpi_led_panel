@@ -154,6 +154,15 @@ pub(crate) fn sleep_at_most(duration: time::Duration, min_sys_sleep_time: time::
     }
 }
 
+/// Sleep for exactly this long by busy waiting the last part.
+pub(crate) fn sleep_exactly(duration: time::Duration, min_sys_sleep_time: time::Duration) {
+    let end_time = time::Instant::now() + duration;
+    sleep_at_most(duration, min_sys_sleep_time);
+    while time::Instant::now() < end_time {
+        std::hint::spin_loop();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

@@ -2,7 +2,7 @@ use std::{fs, rc::Rc, time};
 
 use memmap2::{MmapMut, MmapOptions};
 
-use crate::{chip::PiChip, utils::sleep_at_most};
+use crate::{chip::PiChip, gpio_bits, utils::sleep_at_most};
 
 // See https://elinux.org/BCM2835_registers
 
@@ -144,6 +144,15 @@ impl GPIORegisters {
 
     pub(crate) fn select_function(&mut self, pin: u8, function: GPIOFunction) {
         self.function_select.set_function(pin, function);
+    }
+
+    /// Select the function for all pins whose bits are set.
+    pub(crate) fn select_function_for_bits(&mut self, bits: u32, function: GPIOFunction) {
+        for pin in 0..u32::BITS as u8 {
+            if bits & gpio_bits!(pin) != 0 {
+                self.select_function(pin, function);
+            }
+        }
     }
 
     pub(crate) fn read_pin_level0(&self) -> u32 {

@@ -8,20 +8,28 @@ use crate::{
 
 const PWM_BASE_TIME_NS: u32 = 2;
 
-struct Pulse {
-    start_time: u64,
-    sleep_hint_us: u32,
+/// The pin and function that connect the output enable to PWM0, if it is on such a pin.
+pub(crate) fn pwm_pin_function(pins: u32) -> Option<(u8, GPIOFunction)> {
+    if pins == gpio_bits!(18) {
+        Some((18, GPIOFunction::Alt5))
+    } else if pins == gpio_bits!(12) {
+        Some((12, GPIOFunction::Alt0))
+    } else {
+        None
+    }
 }
 
-pub(crate) struct PinPulser {
-    /// Hints how long to sleep.
-    sleep_hints_us: Vec<u32>,
-    /// Pulse period for each bit plane.
-    pulse_periods: Vec<u32>,
-    /// The current pulse.
-    current_pulse: Option<Pulse>,
-    /// Shorter waits are busy waited and longer ones wake up this early.
-    min_sys_sleep_time: Duration,
+pub(crate) enum PinPulser {
+    /// The output enable is driven by the PWM peripheral, which times the pulses in hardware.
+    Hardware(HardwarePinPulser),
+    /// Fallback for output enable pins that are not connected to the PWM peripheral. The pulses are timed in
+    /// software, which is less accurate and keeps the CPU busy for the whole on-time.
+    Software {
+        /// The output enable pins.
+        pins: u32,
+        /// Pulse duration for each bit plane.
+        pulse_durations: Vec<Duration>,
+    },
 }
 
 impl PinPulser {
@@ -29,23 +37,58 @@ impl PinPulser {
         pins: u32,
         bitplane_timings_ns: &[u32],
         min_sys_sleep_time: Duration,
-        pwm_registers: &mut PWMRegisters,
+        pwm_registers: PWMRegisters,
         gpio_registers: &mut GPIORegisters,
         clk_registers: &mut ClkRegisters,
     ) -> Self {
-        let sleep_hints_us = bitplane_timings_ns.iter().map(|t| t / 1000).collect();
+        if let Some((pin, function)) = pwm_pin_function(pins) {
+            gpio_registers.select_function(pin, function);
+            Self::Hardware(HardwarePinPulser::new(
+                bitplane_timings_ns,
+                min_sys_sleep_time,
+                pwm_registers,
+                clk_registers,
+            ))
+        } else {
+            // The output enable is active low, so keep the panel dark until the first pulse.
+            gpio_registers.write_set_bits(pins);
+            let pulse_durations = bitplane_timings_ns
+                .iter()
+                .map(|&timing| Duration::from_nanos(u64::from(timing)))
+                .collect();
+            Self::Software {
+                pins,
+                pulse_durations,
+            }
+        }
+    }
+}
+
+pub(crate) struct HardwarePinPulser {
+    pwm_registers: PWMRegisters,
+    /// Hints how long to sleep for each bit plane.
+    sleep_hints_us: Vec<u64>,
+    /// Pulse period for each bit plane.
+    pulse_periods: Vec<u32>,
+    /// When the current pulse is expected to end.
+    pulse_end_hint_us: Option<u64>,
+    /// Shorter waits are busy waited and longer ones wake up this early.
+    min_sys_sleep_time: Duration,
+}
+
+impl HardwarePinPulser {
+    fn new(
+        bitplane_timings_ns: &[u32],
+        min_sys_sleep_time: Duration,
+        mut pwm_registers: PWMRegisters,
+        clk_registers: &mut ClkRegisters,
+    ) -> Self {
+        let sleep_hints_us = bitplane_timings_ns
+            .iter()
+            .map(|&t| u64::from(t / 1000))
+            .collect();
 
         let time_base = bitplane_timings_ns[0];
-
-        if pins == gpio_bits!(18) {
-            // Set GPIO 18 to PWM0 mode
-            gpio_registers.select_function(18, GPIOFunction::Alt5);
-        } else if pins == gpio_bits!(12) {
-            // Set GPIO 12 to PWM0 mode
-            gpio_registers.select_function(12, GPIOFunction::Alt0);
-        } else {
-            unreachable!()
-        }
 
         pwm_registers.reset_pwm();
         clk_registers.init_pwm_divider((time_base / 2) / PWM_BASE_TIME_NS);
@@ -55,19 +98,16 @@ impl PinPulser {
             .collect();
 
         Self {
+            pwm_registers,
             sleep_hints_us,
             pulse_periods,
-            current_pulse: None,
+            pulse_end_hint_us: None,
             min_sys_sleep_time,
         }
     }
 
-    pub(crate) fn send_pulse(
-        &mut self,
-        bitplane: usize,
-        pwm_registers: &mut PWMRegisters,
-        time_registers: &mut TimeRegisters,
-    ) {
+    pub(crate) fn send_pulse(&mut self, bitplane: usize, time_registers: &TimeRegisters) {
+        let pwm_registers = &mut self.pwm_registers;
         if self.pulse_periods[bitplane] < 16 {
             pwm_registers.set_pwm_pulse_period(self.pulse_periods[bitplane]);
             pwm_registers.push_fifo(self.pulse_periods[bitplane]);
@@ -92,34 +132,26 @@ impl PinPulser {
         // kept after the FIFO is emptied.
         pwm_registers.push_fifo(0);
 
-        self.current_pulse = Some(Pulse {
-            start_time: time_registers.get_time(),
-            sleep_hint_us: self.sleep_hints_us[bitplane],
-        });
+        self.pulse_end_hint_us = Some(time_registers.get_time() + self.sleep_hints_us[bitplane]);
         pwm_registers.enable_pwm();
     }
 
-    pub(crate) fn wait_pulse_finished(
-        &mut self,
-        time_registers: &mut TimeRegisters,
-        pwm_registers: &mut PWMRegisters,
-    ) {
-        let Some(pulse) = self.current_pulse.take() else {
+    pub(crate) fn wait_pulse_finished(&mut self, time_registers: &TimeRegisters) {
+        let Some(pulse_end_hint_us) = self.pulse_end_hint_us.take() else {
             return;
         };
 
-        let already_elapsed_us = time_registers.get_time() - pulse.start_time;
-        let remaining_time_us = u64::from(pulse.sleep_hint_us).saturating_sub(already_elapsed_us);
+        let remaining_time_us = pulse_end_hint_us.saturating_sub(time_registers.get_time());
         sleep_at_most(
             Duration::from_micros(remaining_time_us),
             self.min_sys_sleep_time,
         );
 
-        while !pwm_registers.fifo_empty() {
+        while !self.pwm_registers.fifo_empty() {
             // busy wait until done.
             std::hint::spin_loop();
         }
 
-        pwm_registers.reset_pwm();
+        self.pwm_registers.reset_pwm();
     }
 }

@@ -11,6 +11,7 @@
 - Halve the memory used by the pixel mapping.
 - Wake up early from sleeps and busy wait the rest to avoid overshooting.
 - Faster `fill_solid` for embedded-graphics, which is used for filled rectangles.
+- Fix the `AdafruitHat`, `Classic` and `ClassicPi1` hardware mappings by timing their pulses in sofware.
 
 ## Version 0.9.1
 
