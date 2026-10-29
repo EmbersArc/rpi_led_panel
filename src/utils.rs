@@ -136,6 +136,12 @@ impl FrameRateMonitor {
             .store(self.get_fps() as u32, Ordering::Relaxed);
     }
 
+    /// Stop measuring until the next update, so that the time in between is not counted as a frame.
+    pub(crate) fn pause(&mut self) {
+        self.last_time = None;
+        self.framerate.store(0, Ordering::Relaxed);
+    }
+
     pub(crate) fn get_fps(&self) -> f32 {
         WINDOW_LENGTH as f32 / self.times.iter().sum::<f32>()
     }

@@ -5,7 +5,7 @@ use std::{
     mem::replace,
     sync::Arc,
     sync::atomic::{AtomicU32, Ordering},
-    sync::mpsc::{Receiver, Sender, SyncSender, TryRecvError, channel, sync_channel},
+    sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, TryRecvError, channel, sync_channel},
     thread::{JoinHandle, spawn},
     time::Duration,
 };
@@ -22,6 +22,16 @@ use crate::{
     pixel_mapper::PixelMapper,
     utils::{FrameRateMonitor, linux_has_isol_cpu, set_thread_affinity},
 };
+
+/// How often GPIO inputs are polled while display updates are paused.
+const SUSPENDED_INPUT_POLL_INTERVAL: Duration = Duration::from_millis(10);
+
+/// Messages sent from the main thread to the display update thread.
+enum ThreadMessage {
+    Canvas(Box<Canvas>),
+    Suspend,
+    Shutdown,
+}
 
 fn initialize_update_thread(chip: PiChip) {
     // Pin the thread to the last core to avoid the flicker resulting from context switching.
@@ -114,18 +124,18 @@ impl Display for MatrixCreationError {
 pub struct RGBMatrix {
     /// The join handle of the update thread.
     thread_handle: Option<JoinHandle<()>>,
-    /// Sender for the shutdown signal.
-    shutdown_sender: Sender<()>,
     /// Receiver for GPIO inputs.
     input_receiver: Receiver<u32>,
-    /// Channel to send canvas to update thread.
-    canvas_to_thread_sender: SyncSender<Box<Canvas>>,
+    /// Channel to send canvases and control messages to the update thread.
+    message_sender: SyncSender<ThreadMessage>,
     /// Channel to receive canvas from update thread.
     canvas_from_thread_receiver: Receiver<Box<Canvas>>,
     /// Additional requested inputs that can be received.
     enabled_input_bits: u32,
     /// Frame rate measurement.
     framerate: Arc<AtomicU32>,
+    /// Whether the display is currently suspended.
+    suspended: bool,
 }
 
 impl RGBMatrix {
@@ -201,10 +211,9 @@ impl RGBMatrix {
         let canvas = Box::new(Canvas::new(&config, shared_mapper));
         let mut thread_canvas = canvas.clone();
 
-        let (canvas_to_thread_sender, canvas_to_thread_receiver) = sync_channel::<Box<Canvas>>(0);
+        let (message_sender, message_receiver) = sync_channel::<ThreadMessage>(0);
         let (canvas_from_thread_sender, canvas_from_thread_receiver) =
             sync_channel::<Box<Canvas>>(1);
-        let (shutdown_sender, shutdown_receiver) = channel::<()>();
         let (input_sender, input_receiver) = channel::<u32>();
         let (thread_start_result_sender, thread_start_result_receiver) =
             channel::<Result<u32, MatrixCreationError>>();
@@ -247,35 +256,60 @@ impl RGBMatrix {
                 .send(Ok(enabled_input_bits))
                 .expect("Could not send to main thread.");
 
+            let mut suspended = false;
+
             'thread: loop {
                 let start_time = gpio.get_time();
-                // Try to receive a shutdown request.
-                if shutdown_receiver.try_recv() != Err(TryRecvError::Empty) {
-                    break 'thread;
-                }
                 // Read input bits and send them if they have changed.
                 let new_inputs = gpio.read();
                 if new_inputs != last_gpio_inputs {
-                    match input_sender.send(new_inputs) {
-                        Ok(()) => {}
-                        Err(_) => {
-                            break 'thread;
-                        }
+                    if input_sender.send(new_inputs).is_err() {
+                        break 'thread;
                     }
                     last_gpio_inputs = new_inputs;
                 }
-                // Check for a swap canvas.
-                match canvas_to_thread_receiver.try_recv() {
-                    Ok(new_canvas) => {
+                // Check for a new message. While suspended, wait for one but keep polling the inputs.
+                let message = if suspended {
+                    match message_receiver.recv_timeout(SUSPENDED_INPUT_POLL_INTERVAL) {
+                        Ok(message) => Some(message),
+                        Err(RecvTimeoutError::Timeout) => None,
+                        Err(RecvTimeoutError::Disconnected) => break 'thread,
+                    }
+                } else {
+                    match message_receiver.try_recv() {
+                        Ok(message) => Some(message),
+                        Err(TryRecvError::Empty) => None,
+                        Err(TryRecvError::Disconnected) => break 'thread,
+                    }
+                };
+                match message {
+                    Some(ThreadMessage::Canvas(new_canvas)) => {
                         let old_canvas = replace(&mut thread_canvas, new_canvas);
                         let Ok(()) = canvas_from_thread_sender.send(old_canvas) else {
                             break 'thread;
                         };
+                        suspended = false;
                     }
-                    Err(TryRecvError::Disconnected) => {
-                        break 'thread;
+                    Some(ThreadMessage::Suspend) => {
+                        // Draw a blank frame so that no row stays lit, but keep the current canvas for
+                        // when the display is resumed.
+                        let mut blank_canvas = thread_canvas.clone();
+                        blank_canvas.fill(0, 0, 0);
+                        blank_canvas.dump_to_matrix(
+                            &mut gpio,
+                            &config.hardware_mapping,
+                            address_setter.as_mut(),
+                            0,
+                            color_clk_mask,
+                        );
+                        frame_rate_monitor.pause();
+                        suspended = true;
                     }
-                    Err(TryRecvError::Empty) => {}
+                    Some(ThreadMessage::Shutdown) => break 'thread,
+                    None => {}
+                }
+                if suspended {
+                    continue;
                 }
 
                 thread_canvas.dump_to_matrix(
@@ -315,11 +349,11 @@ impl RGBMatrix {
         let rgbmatrix = Self {
             thread_handle: Some(thread_handle),
             input_receiver,
-            shutdown_sender,
-            canvas_to_thread_sender,
+            message_sender,
             canvas_from_thread_receiver,
             enabled_input_bits,
             framerate,
+            suspended: false,
         };
 
         Ok((rgbmatrix, canvas))
@@ -355,16 +389,20 @@ impl RGBMatrix {
     /// This returns a cleared canvas that has to be drawn to before calling this function again.
     /// If this function is not called before the next frame update, the previous
     /// frame is drawn again.
+    ///
+    /// If the display is suspended, this resumes it and returns immediately.
     pub fn update_on_vsync(&mut self, canvas: Box<Canvas>) -> Box<Canvas> {
         let Self {
-            canvas_to_thread_sender,
+            message_sender,
             canvas_from_thread_receiver,
+            suspended,
             ..
         } = self;
 
-        canvas_to_thread_sender
-            .send(canvas)
+        message_sender
+            .send(ThreadMessage::Canvas(canvas))
             .expect("Display update thread shut down unexpectedly.");
+        *suspended = false;
 
         let mut canvas = canvas_from_thread_receiver
             .recv()
@@ -375,6 +413,23 @@ impl RGBMatrix {
         // back and forth between two canvases.
         canvas.fill(0, 0, 0);
         canvas
+    }
+
+    /// Blank the display and stop refreshing it until the next call to [`RGBMatrix::update_on_vsync`]. This
+    /// frees up the CPU core used by the display update thread. Blocks until the end of the current frame.
+    pub fn suspend(&mut self) {
+        if !self.suspended {
+            self.message_sender
+                .send(ThreadMessage::Suspend)
+                .expect("Display update thread shut down unexpectedly.");
+            self.suspended = true;
+        }
+    }
+
+    /// Whether the display is currently suspended.
+    #[must_use]
+    pub fn is_suspended(&self) -> bool {
+        self.suspended
     }
 
     /// Get the bits that were available for input.
@@ -399,11 +454,11 @@ impl Drop for RGBMatrix {
     fn drop(&mut self) {
         let Self {
             thread_handle,
-            shutdown_sender,
+            message_sender,
             ..
         } = self;
         if let Some(handle) = thread_handle.take() {
-            shutdown_sender.send(()).ok();
+            message_sender.send(ThreadMessage::Shutdown).ok();
             let _result = handle.join();
         }
     }
