@@ -24,7 +24,7 @@ pub use hardware_mapping::HardwareMapping;
 pub use init_sequence::PanelType;
 pub use multiplex_mapper::MultiplexMapperType;
 pub use named_pixel_mapper::NamedPixelMapperType;
-pub use rgb_matrix::{MatrixCreationError, RGBMatrix};
+pub use rgb_matrix::{MatrixCreationError, RGBMatrix, UpdateThreadError};
 pub use row_address_setter::RowAddressSetterType;
 
 #[cfg(feature = "drawing")]

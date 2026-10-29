@@ -55,7 +55,9 @@ fn main() {
             }
         }
 
-        canvas = matrix.update_on_vsync(canvas);
+        canvas = matrix
+            .update_on_vsync(canvas)
+            .expect("The display update thread stopped");
 
         if step % 120 == 0 {
             print!("\r{:>100}\rFramerate: {}", "", matrix.get_framerate());

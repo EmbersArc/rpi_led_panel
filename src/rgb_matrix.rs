@@ -148,9 +148,27 @@ impl Display for MatrixCreationError {
     }
 }
 
+/// The display update thread stopped while the matrix was in use, which only happens if it panicked.
+#[derive(Debug, Clone)]
+pub struct UpdateThreadError(String);
+
+impl Error for UpdateThreadError {}
+
+impl Display for UpdateThreadError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "The display update thread stopped unexpectedly: {}",
+            self.0
+        )
+    }
+}
+
 pub struct RGBMatrix {
     /// The join handle of the update thread.
     thread_handle: Option<JoinHandle<()>>,
+    /// Why the update thread stopped, once it did.
+    thread_error: Option<UpdateThreadError>,
     /// Receiver for GPIO inputs.
     input_receiver: Receiver<u32>,
     /// Channel to send canvases and control messages to the update thread.
@@ -184,11 +202,10 @@ impl RGBMatrix {
         mut config: RGBMatrixConfig,
         requested_inputs: u32,
     ) -> Result<(Self, Box<Canvas>), MatrixCreationError> {
-        let multiplex_mapper = config.multiplexing.map(MultiplexMapperType::create);
+        let mut multiplex_mapper = config.multiplexing.map(MultiplexMapperType::create);
         let stretch_factor = multiplex_mapper
             .as_ref()
-            .map(|mapper| mapper.panel_stretch_factor())
-            .unwrap_or(1);
+            .map_or(1, |mapper| mapper.panel_stretch_factor());
         config.validate(stretch_factor)?;
 
         // Check if we can access the memory before doing anything else.
@@ -198,18 +215,16 @@ impl RGBMatrix {
             .open("/dev/mem")
             .map_err(|_| MatrixCreationError::MemoryAccessError)?;
 
-        let chip = if let Some(chip) = config.pi_chip {
-            chip
-        } else {
-            PiChip::determine().ok_or(MatrixCreationError::ChipDeterminationError)?
-        };
+        let chip = config
+            .pi_chip
+            .or_else(PiChip::determine)
+            .ok_or(MatrixCreationError::ChipDeterminationError)?;
 
-        let multiplex_mapper = multiplex_mapper.map(|mut mapper| {
-            // The multiplexers might choose to have a different physical layout.
-            // We need to configure that first before setting up the hardware.
+        // The multiplexers might choose to have a different physical layout.
+        // We need to configure that first before setting up the hardware.
+        if let Some(mapper) = &mut multiplex_mapper {
             mapper.edit_rows_cols(&mut config.rows, &mut config.cols);
-            mapper
-        });
+        }
 
         let pixel_designator = PixelDesignator::new(&config.hardware_mapping, config.led_sequence);
         let width = config.cols * config.chain_length;
@@ -394,6 +409,7 @@ impl RGBMatrix {
 
         let rgbmatrix = Self {
             thread_handle: Some(thread_handle),
+            thread_error: None,
             input_receiver,
             message_sender,
             canvas_from_thread_receiver,
@@ -439,32 +455,27 @@ impl RGBMatrix {
     /// frame is drawn again.
     ///
     /// If the display is suspended, this resumes it and returns immediately.
-    pub fn update_on_vsync(&mut self, canvas: Box<Canvas>) -> Box<Canvas> {
-        let Self {
-            message_sender,
-            canvas_from_thread_receiver,
-            suspended,
-            brightness,
-            pwm_bits,
-            ..
-        } = self;
-
-        message_sender
+    pub fn update_on_vsync(
+        &mut self,
+        canvas: Box<Canvas>,
+    ) -> Result<Box<Canvas>, UpdateThreadError> {
+        self.message_sender
             .send(ThreadMessage::Canvas(canvas))
-            .expect("Display update thread shut down unexpectedly.");
-        *suspended = false;
+            .map_err(|_| self.update_thread_error())?;
+        self.suspended = false;
 
-        let mut canvas = canvas_from_thread_receiver
+        let mut canvas = self
+            .canvas_from_thread_receiver
             .recv()
-            .expect("Display update thread shut down unexpectedly.");
+            .map_err(|_| self.update_thread_error())?;
 
-        canvas.set_brightness(*brightness);
-        canvas.set_pwm_bits(*pwm_bits);
+        canvas.set_brightness(self.brightness);
+        canvas.set_pwm_bits(self.pwm_bits);
         // Clear the canvas before handing it back to the user.
         // There is no practical use for not clearing it here as we switch
         // back and forth between two canvases.
         canvas.fill(0, 0, 0);
-        canvas
+        Ok(canvas)
     }
 
     /// Set the brightness in percent, clamped to 1-100.
@@ -480,13 +491,27 @@ impl RGBMatrix {
 
     /// Blank the display and stop refreshing it until the next call to [`RGBMatrix::update_on_vsync`]. This
     /// frees up the CPU core used by the display update thread. Blocks until the end of the current frame.
-    pub fn suspend(&mut self) {
+    pub fn suspend(&mut self) -> Result<(), UpdateThreadError> {
         if !self.suspended {
             self.message_sender
                 .send(ThreadMessage::Suspend)
-                .expect("Display update thread shut down unexpectedly.");
+                .map_err(|_| self.update_thread_error())?;
             self.suspended = true;
         }
+        Ok(())
+    }
+
+    /// Why the update thread stopped. Joins it the first time and keeps the reason for later calls.
+    fn update_thread_error(&mut self) -> UpdateThreadError {
+        self.thread_error
+            .get_or_insert_with(|| {
+                let message = match self.thread_handle.take().map(JoinHandle::join) {
+                    Some(Err(payload)) => panic_message(payload.as_ref()),
+                    _ => String::from("It stopped without panicking."),
+                };
+                UpdateThreadError(message)
+            })
+            .clone()
     }
 
     /// Whether the display is currently suspended.
@@ -515,14 +540,9 @@ impl RGBMatrix {
 
 impl Drop for RGBMatrix {
     fn drop(&mut self) {
-        let Self {
-            thread_handle,
-            message_sender,
-            ..
-        } = self;
-        if let Some(handle) = thread_handle.take() {
-            message_sender.send(ThreadMessage::Shutdown).ok();
-            let _result = handle.join();
+        if let Some(handle) = self.thread_handle.take() {
+            self.message_sender.send(ThreadMessage::Shutdown).ok();
+            handle.join().ok();
         }
     }
 }

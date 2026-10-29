@@ -53,7 +53,9 @@ fn main() {
         if (step / 100) % 2 == 0 {
             text.draw(canvas.as_mut()).unwrap();
         }
-        canvas = matrix.update_on_vsync(canvas);
+        canvas = matrix
+            .update_on_vsync(canvas)
+            .expect("The display update thread stopped");
 
         if step % 120 == 0 {
             print!("\r{:>100}\rFramerate: {}", "", matrix.get_framerate());
