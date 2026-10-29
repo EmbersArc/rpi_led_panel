@@ -14,6 +14,7 @@
 - Fix the `AdafruitHat`, `Classic` and `ClassicPi1` hardware mappings by timing their pulses in sofware.
 - **Breaking:** Move `set_brightness` and `set_pwm_bits` from `Canvas` to `RGBMatrix`. On the canvas they only applied to every other frame.
 - Export the `MatrixCreationError`, `GpioInitializationError` and `InvalidVariantError` error types.
+- Fix the checks for loaded kernel modules and isolated CPUs, which could match the wrong module or CPU.
 
 ## Version 0.9.1
 

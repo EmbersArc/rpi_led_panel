@@ -3,8 +3,7 @@ use libc::{
 };
 use std::{
     ffi::CString,
-    fs::File,
-    io::{BufRead, BufReader},
+    fs::read_to_string,
     sync::Arc,
     sync::atomic::{AtomicU32, Ordering},
     thread, time,
@@ -23,31 +22,46 @@ macro_rules! gpio_bits {
     };
 }
 
+#[must_use]
 pub(crate) fn linux_has_module_loaded(name: &str) -> bool {
-    let Ok(file) = File::open("/proc/modules") else {
-        return false;
-    };
-    let reader = BufReader::new(file);
-    reader.lines().any(|line| line.unwrap().contains(name))
+    read_to_string("/proc/modules").is_ok_and(|modules| module_list_contains(&modules, name))
 }
 
-pub(crate) fn linux_has_isol_cpu(cpu: usize) -> bool {
-    let Ok(file) = File::open("/sys/devices/system/cpu/isolated") else {
-        return false;
-    };
-    let reader = BufReader::new(file);
-    reader
+/// Each line of `/proc/modules` starts with the module name, e.g. `snd_bcm2835 24576 0 - Live 0x0`.
+#[must_use]
+fn module_list_contains(modules: &str, name: &str) -> bool {
+    modules
         .lines()
-        .any(|line| line.unwrap().contains(&cpu.to_string()))
+        .any(|line| line.split_whitespace().next() == Some(name))
 }
 
-pub fn set_thread_affinity(core_id: usize) -> bool {
+#[must_use]
+pub(crate) fn linux_has_isol_cpu(cpu: usize) -> bool {
+    read_to_string("/sys/devices/system/cpu/isolated")
+        .is_ok_and(|cpus| cpu_list_contains(&cpus, cpu))
+}
+
+/// Whether a CPU list like `1,3-5` contains the CPU.
+#[must_use]
+fn cpu_list_contains(cpus: &str, cpu: usize) -> bool {
+    cpus.trim().split(',').any(|range| {
+        let (start, end) = range.split_once('-').unwrap_or((range, range));
+        match (start.parse::<usize>(), end.parse::<usize>()) {
+            (Ok(start), Ok(end)) => (start..=end).contains(&cpu),
+            _ => false,
+        }
+    })
+}
+
+/// Pin the current thread to a core. Returns whether it succeeded.
+#[must_use]
+pub(crate) fn set_thread_affinity(core_id: usize) -> bool {
     let mut set: cpu_set_t = unsafe { std::mem::zeroed() };
     unsafe { CPU_SET(core_id, &mut set) }
     let cpusetsize = std::mem::size_of::<cpu_set_t>();
     let mask = &set;
     let res = unsafe { sched_setaffinity(0, cpusetsize, mask) };
-    res != 0
+    res == 0
 }
 
 fn get_gid_from_name(group: &str) -> Option<gid_t> {
@@ -165,8 +179,30 @@ pub(crate) fn sleep_exactly(duration: time::Duration, min_sys_sleep_time: time::
 
 #[cfg(test)]
 mod tests {
+    use super::{cpu_list_contains, module_list_contains};
+
     #[test]
     fn test_gpio_bits() {
         assert_eq!(gpio_bits!(1, 4, 5), 1 << 1 | 1 << 4 | 1 << 5);
+    }
+
+    #[test]
+    fn test_module_list_contains() {
+        let modules = "snd_bcm2835 24576 0 - Live 0x0\nsnd_pcm 114688 1 snd_bcm2835, Live 0x0\n";
+        assert!(module_list_contains(modules, "snd_bcm2835"));
+        assert!(!module_list_contains(modules, "snd"));
+        assert!(!module_list_contains(modules, "bcm2835"));
+        assert!(!module_list_contains(modules, "w1_gpio"));
+        assert!(!module_list_contains("", "w1_gpio"));
+    }
+
+    #[test]
+    fn test_cpu_list_contains() {
+        assert!(cpu_list_contains("3\n", 3));
+        assert!(!cpu_list_contains("13\n", 3));
+        assert!(cpu_list_contains("1-4\n", 3));
+        assert!(cpu_list_contains("0,2-3\n", 3));
+        assert!(!cpu_list_contains("0,2-3\n", 1));
+        assert!(!cpu_list_contains("\n", 0));
     }
 }
