@@ -6,6 +6,7 @@
 - Fix automatic chip detection on various kernels.
 - Run the display update thread with realtime (`SCHED_FIFO`) scheduling.
 - Share the color lookup table and pixel mapping between canvases instead of copying them.
+- Halve the memory used by the pixel mapping.
 - Wake up early from sleeps and busy wait the rest to avoid overshooting.
 
 ## Version 0.9.1

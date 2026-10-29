@@ -52,13 +52,15 @@ impl LedSequence {
     }
 }
 
+const UNUSED_GPIO_WORD: u32 = u32::MAX;
+
 #[derive(Clone, Copy)]
 pub(crate) struct PixelDesignator {
-    gpio_word: Option<usize>,
+    /// Offset into the bitplane buffer, or [`UNUSED_GPIO_WORD`].
+    gpio_word: u32,
     r_bit: u32,
     g_bit: u32,
     b_bit: u32,
-    mask: u32,
 }
 
 impl PixelDesignator {
@@ -68,11 +70,10 @@ impl PixelDesignator {
         let g = h.panels.green_bits();
         let b = h.panels.blue_bits();
         Self {
-            gpio_word: None,
+            gpio_word: UNUSED_GPIO_WORD,
             r_bit: sequence.get_gpio(Channel::First, r, g, b),
             g_bit: sequence.get_gpio(Channel::Second, r, g, b),
             b_bit: sequence.get_gpio(Channel::Third, r, g, b),
-            mask: !0u32,
         }
     }
 }
@@ -100,7 +101,7 @@ impl PixelDesignatorMap {
                 let position = y * width + x;
                 let d = &mut buffer[position];
                 let offset = (y % double_rows) * (width * K_BIT_PLANES) + x;
-                d.gpio_word = Some(offset);
+                d.gpio_word = u32::try_from(offset).expect("Bitplane buffer too large.");
 
                 let panel = y / config.rows;
                 let color_bits = hm.panels.color_bits[panel];
@@ -113,7 +114,6 @@ impl PixelDesignatorMap {
                 d.r_bit = config.led_sequence.get_gpio(Channel::First, r, g, b);
                 d.g_bit = config.led_sequence.get_gpio(Channel::Second, r, g, b);
                 d.b_bit = config.led_sequence.get_gpio(Channel::Third, r, g, b);
-                d.mask = !(d.r_bit | d.g_bit | d.b_bit);
             }
         }
         Self {
@@ -217,13 +217,13 @@ impl Canvas {
             r_bit,
             g_bit,
             b_bit,
-            mask: designator_mask,
         } = *designator;
 
-        let Some(pos_start) = gpio_word else {
-            // non-used pixel marker.
+        if gpio_word == UNUSED_GPIO_WORD {
             return;
-        };
+        }
+        let pos_start = gpio_word as usize;
+        let designator_mask = !(r_bit | g_bit | b_bit);
 
         let [red, green, blue] = self.color_lookup.lookup_rgb(self.brightness, r, g, b);
 
