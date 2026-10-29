@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::{
     gpio_bits,
     registers::{ClkRegisters, GPIOFunction, GPIORegisters, PWMRegisters, TimeRegisters},
@@ -18,12 +20,15 @@ pub(crate) struct PinPulser {
     pulse_periods: Vec<u32>,
     /// The current pulse.
     current_pulse: Option<Pulse>,
+    /// Shorter waits are busy waited and longer ones wake up this early.
+    min_sys_sleep_time: Duration,
 }
 
 impl PinPulser {
     pub(crate) fn new(
         pins: u32,
         bitplane_timings_ns: &[u32],
+        min_sys_sleep_time: Duration,
         pwm_registers: &mut PWMRegisters,
         gpio_registers: &mut GPIORegisters,
         clk_registers: &mut ClkRegisters,
@@ -53,6 +58,7 @@ impl PinPulser {
             sleep_hints_us,
             pulse_periods,
             current_pulse: None,
+            min_sys_sleep_time,
         }
     }
 
@@ -104,7 +110,10 @@ impl PinPulser {
 
         let already_elapsed_us = time_registers.get_time() - pulse.start_time;
         let remaining_time_us = u64::from(pulse.sleep_hint_us).saturating_sub(already_elapsed_us);
-        sleep_at_most(std::time::Duration::from_micros(remaining_time_us));
+        sleep_at_most(
+            Duration::from_micros(remaining_time_us),
+            self.min_sys_sleep_time,
+        );
 
         while !pwm_registers.fifo_empty() {
             // busy wait until done.

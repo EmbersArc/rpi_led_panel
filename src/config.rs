@@ -56,6 +56,10 @@ pub struct RGBMatrixConfig {
     /// Default: automatic
     #[argh(option)]
     pub slowdown: Option<u32>,
+    /// lower values reduce CPU usage but can make flickers more likely.
+    /// Default: 100
+    #[argh(option, default = "100")]
+    pub min_sys_sleep_microseconds: u64,
     /// interlaced scan mode. Default: false
     #[argh(option, default = "false")]
     pub interlaced: bool,
@@ -120,6 +124,7 @@ impl Default for RGBMatrixConfig {
             pwm_bits: 11,
             pwm_lsb_nanoseconds: 130,
             slowdown: None,
+            min_sys_sleep_microseconds: 100,
             interlaced: false,
             dither_bits: 0,
             chain_length: 1,

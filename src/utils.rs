@@ -148,10 +148,9 @@ impl FrameRateMonitor {
 }
 
 /// Sleep for as long as we are confortable without overshooting.
-pub(crate) fn sleep_at_most(duration: time::Duration) {
-    const MIN_SYS_SLEEP_TIME: time::Duration = time::Duration::from_micros(200);
-    if duration > MIN_SYS_SLEEP_TIME {
-        thread::sleep(duration - MIN_SYS_SLEEP_TIME);
+pub(crate) fn sleep_at_most(duration: time::Duration, min_sys_sleep_time: time::Duration) {
+    if duration > min_sys_sleep_time {
+        thread::sleep(duration - min_sys_sleep_time);
     }
 }
 

@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Add `RGBMatrix::suspend` to blank the display and pause the update thread until the next `update_on_vsync`.
+- Add the `min_sys_sleep_microseconds` option to tune how early sleeps wake up.
 - Fix SIGBUS on aarch64: Read the system timer as two 32-bit registers. [#28](https://github.com/EmbersArc/rpi_led_panel/pull/28)
 - Fix automatic chip detection on various kernels.
 - Run the display update thread with realtime (`SCHED_FIFO`) scheduling.

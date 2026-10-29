@@ -1,6 +1,7 @@
 use std::{
     error::Error,
     fmt::{Display, Formatter},
+    time::Duration,
 };
 
 use crate::{
@@ -54,6 +55,7 @@ pub(crate) struct Gpio {
     output_bits: u32,
     reserved_bits: u32,
     gpio_slowdown: u32,
+    min_sys_sleep_time: Duration,
 }
 
 impl Gpio {
@@ -134,9 +136,12 @@ impl Gpio {
             };
         });
 
+        let min_sys_sleep_time = Duration::from_micros(config.min_sys_sleep_microseconds);
+
         let pin_pulser = PinPulser::new(
             config.hardware_mapping.output_enable,
             &bitplane_timings,
+            min_sys_sleep_time,
             &mut pwm_registers,
             &mut gpio_registers,
             &mut clk_registers,
@@ -153,6 +158,7 @@ impl Gpio {
             output_bits,
             reserved_bits,
             gpio_slowdown,
+            min_sys_sleep_time,
         })
     }
 
@@ -224,6 +230,7 @@ impl Gpio {
 
     /// Sleep for exactly this many microseconds.
     pub(crate) fn sleep(&mut self, duration_us: u64) {
-        self.time_registers.sleep(duration_us);
+        self.time_registers
+            .sleep(duration_us, self.min_sys_sleep_time);
     }
 }

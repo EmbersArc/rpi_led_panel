@@ -187,9 +187,9 @@ impl TimeRegisters {
         }
     }
 
-    pub(crate) fn sleep(&mut self, duration_us: u64) {
+    pub(crate) fn sleep(&mut self, duration_us: u64, min_sys_sleep_time: time::Duration) {
         let end_time = self.get_time() + duration_us;
-        sleep_at_most(time::Duration::from_micros(duration_us));
+        sleep_at_most(time::Duration::from_micros(duration_us), min_sys_sleep_time);
         while self.get_time() < end_time {
             std::hint::spin_loop();
         }
