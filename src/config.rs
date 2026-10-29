@@ -72,8 +72,8 @@ pub struct RGBMatrixConfig {
     /// Default: 100
     #[argh(option, default = "100")]
     pub min_sys_sleep_microseconds: u64,
-    /// interlaced scan mode. Default: false
-    #[argh(option, default = "false")]
+    /// use interlaced scan instead of progressive scan
+    #[argh(switch)]
     pub interlaced: bool,
     /// the lower bits can be time dithered, i.e. their brightness contribution is achieved by only showing
     /// them some frames (this is possible, because the PWM is implemented as binary code modulation). This
