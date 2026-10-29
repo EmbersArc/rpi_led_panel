@@ -28,10 +28,10 @@ drawing = ["embedded-graphics"]
 
 [dependencies]
 argh = "0.1.19"
-memmap2 = "0.9.11"
+memmap2 = "0.9.12"
 embedded-graphics = { version = "0.8.2", optional = true }
 thread-priority = "3.1.1"
-libc = "0.2.189"
+libc = "0.2.191"
 strum = { version = "0.28.0", features = ["derive"] }
 log = "0.4.34"
 env_logger = "0.11.11"
