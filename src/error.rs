@@ -5,7 +5,7 @@ pub struct InvalidVariantError {
 }
 
 impl InvalidVariantError {
-    pub fn new<V: strum::VariantNames>(_s: &str) -> InvalidVariantError {
+    pub(crate) fn new<V: strum::VariantNames>(_s: &str) -> InvalidVariantError {
         InvalidVariantError {
             variants: V::VARIANTS,
         }

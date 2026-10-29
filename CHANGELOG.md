@@ -13,6 +13,7 @@
 - Faster `fill_solid` for embedded-graphics, which is used for filled rectangles.
 - Fix the `AdafruitHat`, `Classic` and `ClassicPi1` hardware mappings by timing their pulses in sofware.
 - **Breaking:** Move `set_brightness` and `set_pwm_bits` from `Canvas` to `RGBMatrix`. On the canvas they only applied to every other frame.
+- Export the `MatrixCreationError`, `GpioInitializationError` and `InvalidVariantError` error types.
 
 ## Version 0.9.1
 

@@ -81,6 +81,7 @@ fn initialize_update_thread(chip: PiChip) {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum MatrixCreationError {
     ChipDeterminationError,
     TooManyParallelChains(usize),

@@ -18,11 +18,13 @@ mod utils;
 pub use canvas::{Canvas, LedSequence};
 pub use chip::PiChip;
 pub use config::RGBMatrixConfig;
+pub use error::InvalidVariantError;
+pub use gpio::GpioInitializationError;
 pub use hardware_mapping::HardwareMapping;
 pub use init_sequence::PanelType;
 pub use multiplex_mapper::MultiplexMapperType;
 pub use named_pixel_mapper::NamedPixelMapperType;
-pub use rgb_matrix::RGBMatrix;
+pub use rgb_matrix::{MatrixCreationError, RGBMatrix};
 pub use row_address_setter::RowAddressSetterType;
 
 #[cfg(feature = "drawing")]

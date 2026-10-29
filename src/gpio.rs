@@ -16,6 +16,7 @@ use crate::{
 };
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum GpioInitializationError {
     OneWireProtocolEnabled,
     SoundModuleLoaded,
