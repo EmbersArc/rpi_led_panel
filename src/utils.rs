@@ -1,9 +1,10 @@
 use libc::{
-    CPU_SET, cpu_set_t, getgrnam, getpwnam, gid_t, sched_setaffinity, setgid, setuid, uid_t,
+    CPU_SET, c_int, cpu_set_t, getgrnam, getpwnam, gid_t, sched_setaffinity, setgid, setuid, uid_t,
 };
 use std::{
     ffi::CString,
     fs::read_to_string,
+    io,
     sync::Arc,
     sync::atomic::{AtomicU32, Ordering},
     thread, time,
@@ -65,32 +66,41 @@ pub(crate) fn set_thread_affinity(core_id: usize) -> bool {
 }
 
 fn get_gid_from_name(group: &str) -> Option<gid_t> {
-    let group_cstr = CString::new(group).unwrap();
+    let group_cstr = CString::new(group).ok()?;
     unsafe {
         let g = getgrnam(group_cstr.as_ptr());
         if g.is_null() { None } else { Some((*g).gr_gid) }
     }
 }
 
-fn set_gid(gid: gid_t) -> bool {
-    unsafe { setgid(gid) == 0 }
+/// Turn the return value of a libc call into the error it set.
+fn check_libc_result(result: c_int) -> io::Result<()> {
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
 }
 
-fn set_supplementary_groups(gid: gid_t) -> bool {
+fn set_gid(gid: gid_t) -> io::Result<()> {
+    check_libc_result(unsafe { setgid(gid) })
+}
+
+fn set_supplementary_groups(gid: gid_t) -> io::Result<()> {
     let groups = [gid];
-    unsafe { libc::setgroups(groups.len(), groups.as_ptr()) == 0 }
+    check_libc_result(unsafe { libc::setgroups(groups.len(), groups.as_ptr()) })
 }
 
 fn get_uid_from_name(user: &str) -> Option<uid_t> {
-    let user_cstr = CString::new(user).unwrap();
+    let user_cstr = CString::new(user).ok()?;
     unsafe {
         let p = getpwnam(user_cstr.as_ptr());
         if p.is_null() { None } else { Some((*p).pw_uid) }
     }
 }
 
-fn set_uid(uid: uid_t) -> bool {
-    unsafe { setuid(uid) == 0 }
+fn set_uid(uid: uid_t) -> io::Result<()> {
+    check_libc_result(unsafe { setuid(uid) })
 }
 
 /// Drop to the provided user / group's privileges.
@@ -99,23 +109,18 @@ pub(crate) fn drop_privs(user: &str, group: &str) -> Result<(), String> {
         .parse()
         .ok()
         .or_else(|| get_gid_from_name(group))
-        .ok_or("Failed to get GID for given group")?;
+        .ok_or_else(|| format!("Failed to get GID for group '{group}'"))?;
 
     let uid: uid_t = user
         .parse()
         .ok()
         .or_else(|| get_uid_from_name(user))
-        .ok_or("Failed to get UID for given user")?;
+        .ok_or_else(|| format!("Failed to get UID for user '{user}'"))?;
 
-    if !set_supplementary_groups(gid) {
-        return Err(String::from("Failed to set supplementary groups"));
-    }
-    if !set_gid(gid) {
-        return Err(String::from("Failed to set GID"));
-    }
-    if !set_uid(uid) {
-        return Err(String::from("Failed to set UID"));
-    }
+    set_supplementary_groups(gid)
+        .map_err(|error| format!("Failed to set supplementary groups: {error}"))?;
+    set_gid(gid).map_err(|error| format!("Failed to set GID {gid}: {error}"))?;
+    set_uid(uid).map_err(|error| format!("Failed to set UID {uid}: {error}"))?;
 
     Ok(())
 }

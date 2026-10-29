@@ -76,6 +76,22 @@ impl PixelDesignator {
             b_bit: sequence.get_gpio(Channel::Third, r, g, b),
         }
     }
+
+    /// The GPIO bits of the colors that are on in the bit plane.
+    fn plane_bits(&self, [red, green, blue]: [u16; 3], plane: usize) -> u32 {
+        let mask = 1 << plane;
+        let mut bits = 0;
+        if red & mask != 0 {
+            bits |= self.r_bit;
+        }
+        if green & mask != 0 {
+            bits |= self.g_bit;
+        }
+        if blue & mask != 0 {
+            bits |= self.b_bit;
+        }
+        bits
+    }
 }
 
 #[derive(Clone)]
@@ -218,70 +234,37 @@ impl Canvas {
         if x >= self.width() || y >= self.height() {
             return;
         }
-        let designator = self
+        let designator = *self
             .shared_mapper
             .get(x, y)
             .expect("Pixel not in designator map. This is a bug.");
-        let PixelDesignator {
-            gpio_word,
-            r_bit,
-            g_bit,
-            b_bit,
-        } = *designator;
 
-        if gpio_word == UNUSED_GPIO_WORD {
+        if designator.gpio_word == UNUSED_GPIO_WORD {
             return;
         }
-        let pos_start = gpio_word as usize;
-        let designator_mask = !(r_bit | g_bit | b_bit);
+        let pos_start = designator.gpio_word as usize;
+        let designator_mask = !(designator.r_bit | designator.g_bit | designator.b_bit);
 
-        let [red, green, blue] = self.color_lookup.lookup_rgb(self.brightness, r, g, b);
+        let color = self.color_lookup.lookup_rgb(self.brightness, r, g, b);
 
         let min_bit_plane = K_BIT_PLANES - self.pwm_bits;
 
         (min_bit_plane..K_BIT_PLANES).for_each(|plane| {
             let pos = pos_start + self.cols * plane;
-            let mask = 1 << plane;
-            let mut color_bits = 0;
-            if (red & mask) != 0 {
-                color_bits |= r_bit;
-            };
-            if (green & mask) != 0 {
-                color_bits |= g_bit;
-            };
-            if (blue & mask) != 0 {
-                color_bits |= b_bit;
-            };
             self.bitplane_buffer[pos] &= designator_mask;
-            self.bitplane_buffer[pos] |= color_bits;
+            self.bitplane_buffer[pos] |= designator.plane_bits(color, plane);
         });
     }
 
     pub fn fill(&mut self, r: u8, g: u8, b: u8) {
         let designator = self.shared_mapper.get_pixel_designator();
-        let PixelDesignator {
-            r_bit,
-            g_bit,
-            b_bit,
-            ..
-        } = designator;
 
-        let [red, green, blue] = self.color_lookup.lookup_rgb(self.brightness, r, g, b);
+        let color = self.color_lookup.lookup_rgb(self.brightness, r, g, b);
 
-        (K_BIT_PLANES - self.pwm_bits..K_BIT_PLANES).for_each(|b| {
-            let mask = 1 << b;
-            let mut plane_bits = 0;
-            if (red & mask) == mask {
-                plane_bits |= r_bit;
-            };
-            if (green & mask) == mask {
-                plane_bits |= g_bit;
-            };
-            if (blue & mask) == mask {
-                plane_bits |= b_bit;
-            };
+        (K_BIT_PLANES - self.pwm_bits..K_BIT_PLANES).for_each(|plane| {
+            let plane_bits = designator.plane_bits(color, plane);
             (0..self.double_rows).for_each(|row| {
-                self.row_at_mut(row, b).fill(plane_bits);
+                self.row_at_mut(row, plane).fill(plane_bits);
             });
         });
     }
