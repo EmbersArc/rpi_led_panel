@@ -87,7 +87,7 @@ impl Gpio {
         let mut clk_registers = ClkRegisters::new(chip).map_err(map_err)?;
 
         // Drop privileges here as we no longer need root.
-        if config.drop_privs {
+        if !config.no_drop_privs {
             let res = drop_privs(&config.drop_priv_user, &config.drop_priv_group);
             if let Err(s) = res {
                 return Err(GpioInitializationError::FailedPrivilegeDrop(s));

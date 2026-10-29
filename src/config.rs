@@ -108,9 +108,9 @@ pub struct RGBMatrixConfig {
     /// brightness in percent. Default: 100
     #[argh(option, default = "100")]
     pub led_brightness: u8,
-    /// drop privileges from root after initialization. Default: true
-    #[argh(option, default = "true")]
-    pub drop_privs: bool,
+    /// keep running as root instead of dropping privileges after initialization
+    #[argh(switch)]
+    pub no_drop_privs: bool,
     /// username or UID to drop privileges to. Default: daemon
     #[argh(option, default = "String::from(\"daemon\")")]
     pub drop_priv_user: String,
@@ -217,7 +217,7 @@ impl Default for RGBMatrixConfig {
             row_setter: RowAddressSetterType::Direct,
             led_sequence: LedSequence::Rgb,
             led_brightness: 100,
-            drop_privs: true,
+            no_drop_privs: false,
             drop_priv_user: String::from("daemon"),
             drop_priv_group: String::from("daemon"),
         }
