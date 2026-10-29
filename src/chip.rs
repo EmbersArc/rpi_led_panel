@@ -1,4 +1,4 @@
-use std::fs::read_to_string;
+use std::fs::{read, read_to_string};
 
 use crate::error::InvalidVariantError;
 
@@ -23,30 +23,35 @@ impl PiChip {
     /// Try to automatically determine the model.
     #[must_use]
     pub fn determine() -> Option<Self> {
-        let cpuinfo = read_to_string("/proc/cpuinfo").ok()?;
+        // Provided by the Raspberry Pi kernel.
+        if let Ok(cpuinfo) = read_to_string("/proc/cpuinfo") {
+            if let Some(chip) = Self::from_cpuinfo(&cpuinfo) {
+                return Some(chip);
+            }
+        }
+        // Provided by mainline kernels (Arch Linux ARM, Debian, Fedora, etc.).
+        if let Ok(compatible) = read("/proc/device-tree/compatible") {
+            if let Some(chip) = Self::from_device_tree_compatible(&compatible) {
+                return Some(chip);
+            }
+        }
+        None
+    }
 
-        let revision_number =
-            if let Some(line) = cpuinfo.lines().find(|line| line.starts_with("Revision")) {
-                // https://www.raspberrypi.org/documentation/hardware/raspberrypi/revision-codes/README.md
-                let revision_str = line.split(' ').next_back()?;
-                let old_style = revision_str.len() == 4;
-                if old_style {
-                    return Some(Self::BCM2708);
-                }
-                let revision = u32::from_str_radix(revision_str, 16).ok()?;
-                // Bits: NOQuuuWuFMMMCCCCPPPPTTTTTTTTRRRR
-                //                       ^^^^ processor model
-                (revision >> 12) & 0b1111
-            } else if let Some(line) = cpuinfo
-                .lines()
-                .find(|line| line.starts_with("CPU revision"))
-            {
-                let revision_str = line.split(' ').next_back()?;
-                revision_str.parse().ok()?
-            } else {
-                return None;
-            };
-        match revision_number {
+    fn from_cpuinfo(cpuinfo: &str) -> Option<Self> {
+        let line = cpuinfo.lines().find(|line| line.starts_with("Revision"))?;
+        // https://www.raspberrypi.com/documentation/computers/raspberry-pi.html#raspberry-pi-revision-codes
+        let revision_str = line.split(' ').next_back()?;
+        let revision = u32::from_str_radix(revision_str, 16).ok()?;
+        // Bits: NOQuuuWuFMMMCCCCPPPPTTTTTTTTRRRR
+        //               ^ new-style flag
+        //                       ^^^^ processor model
+        let new_style = (revision >> 23) & 1 == 1;
+        if !new_style {
+            // Old-style codes (e.g. `000e`, or `100000e` with the warranty bit set) are all BCM2835 boards.
+            return Some(Self::BCM2708);
+        }
+        match (revision >> 12) & 0b1111 {
             // BCM2835
             0 => Some(Self::BCM2708),
             // BCM2836
@@ -57,6 +62,20 @@ impl PiChip {
             3 => Some(Self::BCM2711),
             _ => None,
         }
+    }
+
+    /// The `compatible` property is a list of NUL-terminated strings, e.g.
+    /// `raspberrypi,4-model-b\0brcm,bcm2711\0`. Older Raspberry Pi kernels use the
+    /// `bcm2708`/`bcm2709`/`bcm2710` names.
+    fn from_device_tree_compatible(compatible: &[u8]) -> Option<Self> {
+        compatible.split(|&b| b == 0).find_map(|entry| match entry {
+            b"brcm,bcm2835" | b"brcm,bcm2708" => Some(Self::BCM2708),
+            b"brcm,bcm2836" | b"brcm,bcm2837" | b"brcm,bcm2709" | b"brcm,bcm2710" => {
+                Some(Self::BCM2709)
+            }
+            b"brcm,bcm2711" => Some(Self::BCM2711),
+            _ => None,
+        })
     }
 
     pub(crate) const fn num_cores(self) -> usize {

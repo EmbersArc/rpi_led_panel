@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Fix SIGBUS on aarch64: Read the system timer as two 32-bit registers. [#28](https://github.com/EmbersArc/rpi_led_panel/pull/28)
+- Fix automatic chip detection on various kernels.
 
 ## Version 0.9.1
 
