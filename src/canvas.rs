@@ -149,8 +149,6 @@ impl PixelDesignatorMap {
 
 #[derive(Clone)]
 pub struct Canvas {
-    #[allow(unused)]
-    rows: usize,
     cols: usize,
     double_rows: usize,
     bitplane_buffer: Vec<u32>,
@@ -164,11 +162,9 @@ pub struct Canvas {
 impl Canvas {
     pub(crate) fn new(config: &RGBMatrixConfig, shared_mapper: PixelDesignatorMap) -> Self {
         let color_lookup = ColorLookup::cie1931();
-        let rows = config.rows * config.parallel;
         let cols = config.cols * config.chain_length;
         let double_rows = config.double_rows();
         Self {
-            rows,
             cols,
             double_rows,
             bitplane_buffer: vec![0u32; double_rows * cols * K_BIT_PLANES],
@@ -190,17 +186,17 @@ impl Canvas {
         self.shared_mapper.width
     }
 
-    fn position_at(&self, double_row: usize, column: usize, bit: usize) -> usize {
-        double_row * (self.cols * K_BIT_PLANES) + bit * self.cols + column
+    fn row_start(&self, double_row: usize, bit: usize) -> usize {
+        double_row * (self.cols * K_BIT_PLANES) + bit * self.cols
     }
 
-    fn row_at(&self, double_row: usize, column: usize, bit: usize) -> &[u32] {
-        let start = self.position_at(double_row, column, bit);
+    fn row_at(&self, double_row: usize, bit: usize) -> &[u32] {
+        let start = self.row_start(double_row, bit);
         &self.bitplane_buffer[start..start + self.cols]
     }
 
-    fn row_at_mut(&mut self, double_row: usize, column: usize, bit: usize) -> &mut [u32] {
-        let start = self.position_at(double_row, column, bit);
+    fn row_at_mut(&mut self, double_row: usize, bit: usize) -> &mut [u32] {
+        let start = self.row_start(double_row, bit);
         &mut self.bitplane_buffer[start..start + self.cols]
     }
 
@@ -271,7 +267,7 @@ impl Canvas {
                 plane_bits |= b_bit;
             };
             (0..self.double_rows).for_each(|row| {
-                self.row_at_mut(row, 0, b).fill(plane_bits);
+                self.row_at_mut(row, b).fill(plane_bits);
             });
         });
     }
@@ -303,7 +299,7 @@ impl Canvas {
             // full PWM of one row before switching rows.
             for b in start_bit..K_BIT_PLANES {
                 // While the output enable is still on, we can already clock in the next data.
-                let row = self.row_at(d_row, 0, b);
+                let row = self.row_at(d_row, b);
                 row.iter().for_each(|col| {
                     gpio.write_masked_bits(*col, color_clk_mask); // col + reset clock
                     gpio.set_bits(hardware_mapping.clock); // Rising edge: clock color in.
