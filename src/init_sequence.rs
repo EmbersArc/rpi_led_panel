@@ -49,11 +49,11 @@ fn write_register(
     bits_off: u32,
 ) {
     let hm = &config.hardware_mapping;
-    let columns = config.cols;
+    let columns = config.cols * config.chain_length;
     let mask = bits_on | hm.strobe;
 
     for c in 0..columns {
-        let mut bits = if value & (1 << (c % 16)) == 0 {
+        let mut bits = if value & (1 << (15 - c % 16)) == 0 {
             bits_off
         } else {
             bits_on
