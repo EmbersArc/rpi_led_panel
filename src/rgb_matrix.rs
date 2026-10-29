@@ -537,8 +537,16 @@ impl RGBMatrix {
     }
 
     /// Tries to receive a new GPIO input as requested with the `requested_inputs` argument of [`RGBMatrix::new`].
-    pub fn receive_new_inputs(&mut self, timeout: Duration) -> Option<u32> {
-        self.input_receiver.recv_timeout(timeout).ok()
+    /// Returns `None` if the inputs didn't change before the timeout.
+    pub fn receive_new_inputs(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<Option<u32>, UpdateThreadError> {
+        match self.input_receiver.recv_timeout(timeout) {
+            Ok(inputs) => Ok(Some(inputs)),
+            Err(RecvTimeoutError::Timeout) => Ok(None),
+            Err(RecvTimeoutError::Disconnected) => Err(self.update_thread_error()),
+        }
     }
 
     /// Get the average frame rate over the last 60 frames.
@@ -559,7 +567,13 @@ impl Drop for RGBMatrix {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    use std::{
+        collections::HashSet,
+        sync::Arc,
+        sync::mpsc::{channel, sync_channel},
+        thread::spawn,
+        time::Duration,
+    };
 
     use strum::VariantNames;
 
@@ -577,6 +591,39 @@ mod tests {
             .join()
             .unwrap_err();
         assert_eq!(panic_message(formatted.as_ref()), "formatted 1");
+    }
+
+    #[test]
+    fn test_receive_inputs_after_panic() {
+        // A stand-in for the update thread that sends one input and panics when told to.
+        let (input_sender, input_receiver) = channel();
+        let (panic_sender, panic_receiver) = channel();
+        let thread_handle = spawn(move || {
+            input_sender.send(1).unwrap();
+            panic_receiver.recv().unwrap();
+            panic!("update failed");
+        });
+        let (message_sender, _message_receiver) = sync_channel(0);
+        let (_canvas_sender, canvas_from_thread_receiver) = sync_channel(1);
+        let mut matrix = RGBMatrix {
+            thread_handle: Some(thread_handle),
+            thread_error: None,
+            input_receiver,
+            message_sender,
+            canvas_from_thread_receiver,
+            enabled_input_bits: 1,
+            framerate: Arc::default(),
+            suspended: false,
+            brightness: 100,
+            pwm_bits: 11,
+        };
+        let timeout = Duration::from_millis(10);
+
+        assert_eq!(matrix.receive_new_inputs(timeout).unwrap(), Some(1));
+        assert_eq!(matrix.receive_new_inputs(timeout).unwrap(), None);
+        panic_sender.send(()).unwrap();
+        let error = matrix.receive_new_inputs(timeout).unwrap_err();
+        assert!(error.to_string().ends_with("update failed"), "{error}");
     }
 
     #[test]

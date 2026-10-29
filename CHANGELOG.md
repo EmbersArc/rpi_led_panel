@@ -25,6 +25,7 @@
 - **Breaking:** `update_on_vsync` and `suspend` return an `UpdateThreadError` with the reason instead of panicking when the update thread shuts down unexpectedly.
 - Reject panel sizes that a multiplex mapper doesn't support.
 - Fix the `U-mapper` pixel mapper for chains that aren't a multiple of 64 pixels wide.
+- **Breaking:** `receive_new_inputs` returns an `UpdateThreadError` instead of `None` when the update thread shuts down unexpectedly.
 
 ## Version 0.9.1
 
