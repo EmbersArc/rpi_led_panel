@@ -32,18 +32,24 @@ pub enum NamedPixelMapperType {
     /// `--pixelmapping U-mapper`
     ///
     /// For example, a single chain display with four 32x32 panels like this:
+    /// ```text
     ///    [<][<][<][<] }- Raspberry Pi connector
+    /// ```
     ///
     /// can be arranged in this 64x64 U-shaped display:
+    /// ```text
     ///    [<][<] }----- Raspberry Pi connector
     ///    [>][>]
+    /// ```
     ///
     /// This U-shape configuration can also be applied to displays with multiple chains.
     /// For instance, an arrangement with two chains, each consisting of 8 panels, can be represented as follows:
+    /// ```text
     ///   [<][<][<][<]  }--- Pi connector #1
     ///   [>][>][>][>]
     ///   [<][<][<][<]  }--- Pi connector #2
     ///   [>][>][>][>]
+    /// ```
     UMapper,
 
     /// The `ChainLink` represents a pixel mapping strategy where a long chain
@@ -51,10 +57,12 @@ pub enum NamedPixelMapperType {
     ///
     /// For instance, a chain consisting of 12 panels, with 4 panels
     /// (`chain_length` = 4, `parallel` = 3) per connector, can be represented as follows:
+    /// ```text
     ///   [>][>][>][>] [>][>][>][>] [>][>][>][>]
     ///    │            │            └─ Pi connector #3
     ///    │            └─ Pi connector #2
     ///    └─> Pi connector #1
+    /// ```
     ChainLink,
 }
 

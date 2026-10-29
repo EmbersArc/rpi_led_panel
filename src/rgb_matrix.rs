@@ -371,7 +371,7 @@ impl RGBMatrix {
         self.enabled_input_bits
     }
 
-    /// Tries to receive a new GPIO input as specified with [`RGBMatrix::request_enabled_inputs`].
+    /// Tries to receive a new GPIO input as requested with the `requested_inputs` argument of [`RGBMatrix::new`].
     pub fn receive_new_inputs(&mut self, timeout: Duration) -> Option<u32> {
         self.input_receiver.recv_timeout(timeout).ok()
     }
