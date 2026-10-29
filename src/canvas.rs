@@ -173,7 +173,7 @@ impl Canvas {
             double_rows,
             bitplane_buffer: vec![0u32; double_rows * cols * K_BIT_PLANES],
             shared_mapper: Arc::new(shared_mapper),
-            pwm_bits: config.pwm_bits,
+            pwm_bits: config.pwm_bits.clamp(1, K_BIT_PLANES),
             brightness: config.led_brightness.clamp(1, 100),
             color_lookup,
             interlaced: config.interlaced,
@@ -327,14 +327,11 @@ impl Canvas {
         }
     }
 
-    // Set PWM bits used for output. Default is 11, but if you only deal with
-    // simple comic-colors, 1 might be sufficient. Lower values require less CPU.
-    pub fn set_pwm_bits(&mut self, pwm_bits: usize) {
-        self.pwm_bits = pwm_bits;
+    pub(crate) fn set_pwm_bits(&mut self, pwm_bits: usize) {
+        self.pwm_bits = pwm_bits.clamp(1, K_BIT_PLANES);
     }
 
-    /// Set the canvas' brightness in percent.
-    pub fn set_brightness(&mut self, brightness: u8) {
+    pub(crate) fn set_brightness(&mut self, brightness: u8) {
         self.brightness = brightness.clamp(1, 100);
     }
 }

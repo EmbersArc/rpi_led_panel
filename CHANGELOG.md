@@ -12,6 +12,7 @@
 - Wake up early from sleeps and busy wait the rest to avoid overshooting.
 - Faster `fill_solid` for embedded-graphics, which is used for filled rectangles.
 - Fix the `AdafruitHat`, `Classic` and `ClassicPi1` hardware mappings by timing their pulses in sofware.
+- **Breaking:** Move `set_brightness` and `set_pwm_bits` from `Canvas` to `RGBMatrix`. On the canvas they only applied to every other frame.
 
 ## Version 0.9.1
 
