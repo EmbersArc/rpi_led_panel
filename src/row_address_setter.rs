@@ -214,7 +214,7 @@ impl RowAddressSetter for ShiftRegisterRowAddressSetter {
     }
 }
 
-/// A shift register row address setter that does not use B but C for the data. Clock is inverted.
+/// A shift register row address setter that does not use B but C for the data. Data and clock are inverted.
 pub(crate) struct ABCShiftRegisterRowAddressSetter {
     row_mask: u32,
     last_row: Option<usize>,
@@ -251,14 +251,14 @@ impl RowAddressSetter for ABCShiftRegisterRowAddressSetter {
         (0..self.double_rows).for_each(|activate| {
             gpio.clear_bits(self.clock);
             if activate == self.double_rows - 1 - row {
-                gpio.clear_bits(self.data);
-            } else {
                 gpio.set_bits(self.data);
+            } else {
+                gpio.clear_bits(self.data);
             }
             gpio.set_bits(self.clock);
         });
-        gpio.clear_bits(self.clock);
         gpio.set_bits(self.clock);
+        gpio.clear_bits(self.clock);
         self.last_row = Some(row);
     }
 }

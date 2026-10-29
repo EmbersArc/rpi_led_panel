@@ -21,6 +21,7 @@
 - Fix the `FM6126` and `FM6127` panel initialization, which shifted the register values in reversed bit order and only reached the first panel of a chain.
 - Fix the `P8Outdoor1R1G1B` multiplex mapper.
 - Fix a panic in interlaced mode when the number of rows is not a multiple of 4.
+- Fix the `ABCShiftRegister` row address setter, which didn't invert the data and clock.
 - **Breaking:** `update_on_vsync` and `suspend` return an `UpdateThreadError` with the reason instead of panicking when the update thread shuts down unexpectedly.
 
 ## Version 0.9.1
