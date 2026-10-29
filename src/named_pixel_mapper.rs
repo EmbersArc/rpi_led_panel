@@ -29,7 +29,7 @@ pub enum NamedPixelMapperType {
     /// the display area without increasing the number of data chains.
     ///
     /// `UMapper` takes no parameters.
-    /// `--pixelmapping U-mapper`
+    /// `--pixelmapper U-mapper`
     ///
     /// For example, a single chain display with four 32x32 panels like this:
     /// ```text
@@ -229,7 +229,7 @@ impl NamedPixelMapper for UArrangeMapper {
         matrix_width: usize,
         matrix_height: usize,
     ) -> Result<[usize; 2], MatrixCreationError> {
-        let visible_width = (matrix_width / 64) * 32; // Div at 32px boundary
+        let visible_width = matrix_width / 2;
         let visible_height = 2 * matrix_height;
         if !matrix_height.is_multiple_of(self.parallel) {
             let message = format!(
@@ -250,7 +250,7 @@ impl NamedPixelMapper for UArrangeMapper {
         y: usize,
     ) -> [usize; 2] {
         let panel_height = matrix_height / self.parallel;
-        let visible_width = (matrix_width / 64) * 32;
+        let visible_width = matrix_width / 2;
         let slab_height = 2 * panel_height; // one folded u-shape
         let base_y = (y / slab_height) * panel_height;
         let y_in_slab = y % slab_height;

@@ -623,14 +623,54 @@ mod tests {
                     accepted_sizes += 1;
 
                     assert_eq!((map.width(), map.height()), (2 * cols, 2 * rows), "{panel}");
-                    let designators: HashSet<_> = (0..map.height())
-                        .flat_map(|y| (0..map.width()).map(move |x| (x, y)))
-                        .map(|(x, y)| *map.get(x, y).unwrap())
-                        .collect();
-                    assert_eq!(designators.len(), 4 * rows * cols, "{panel}");
+                    assert_eq!(distinct_leds(&map), 4 * rows * cols, "{panel}");
                 }
             }
             assert!(accepted_sizes > 0, "{name} accepts no panel size");
         }
+    }
+
+    #[test]
+    fn test_named_pixel_mappers() {
+        // Rearranging the panels needs to keep a different LED for each pixel.
+        for name in [
+            "Mirror:H",
+            "Mirror:V",
+            "Rotate:90",
+            "Rotate:180",
+            "Rotate:270",
+            "U-mapper",
+            "ChainLink",
+        ] {
+            let mapper: NamedPixelMapperType = name.parse().unwrap();
+            for (rows, cols) in [(16, 32), (32, 32), (32, 48), (32, 64), (40, 80), (64, 64)] {
+                for (chain_length, parallel) in [(2, 1), (4, 1), (2, 3), (6, 2)] {
+                    let mut config = RGBMatrixConfig {
+                        rows,
+                        cols,
+                        chain_length,
+                        parallel,
+                        pixelmapper: vec![mapper],
+                        ..Default::default()
+                    };
+                    let panels =
+                        format!("{name} with {chain_length}x{parallel} {rows}x{cols} panels");
+                    let map = RGBMatrix::create_pixel_map(&mut config)
+                        .unwrap_or_else(|error| panic!("{panels}: {error}"));
+                    let leds = rows * cols * chain_length * parallel;
+                    assert_eq!(map.width() * map.height(), leds, "{panels}");
+                    assert_eq!(distinct_leds(&map), leds, "{panels}");
+                }
+            }
+        }
+    }
+
+    /// How many different LEDs the pixels of the map light up.
+    fn distinct_leds(map: &PixelDesignatorMap) -> usize {
+        let designators: HashSet<_> = (0..map.height())
+            .flat_map(|y| (0..map.width()).map(move |x| (x, y)))
+            .map(|(x, y)| *map.get(x, y).unwrap())
+            .collect();
+        designators.len()
     }
 }

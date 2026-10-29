@@ -24,6 +24,7 @@
 - Fix the `ABCShiftRegister` row address setter, which didn't invert the data and clock.
 - **Breaking:** `update_on_vsync` and `suspend` return an `UpdateThreadError` with the reason instead of panicking when the update thread shuts down unexpectedly.
 - Reject panel sizes that a multiplex mapper doesn't support.
+- Fix the `U-mapper` pixel mapper for chains that aren't a multiple of 64 pixels wide.
 
 ## Version 0.9.1
 

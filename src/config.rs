@@ -13,6 +13,9 @@ pub(crate) const SUB_PANELS: usize = 2;
 /// The row address lines A to E can select up to 32 double rows.
 const MAX_DOUBLE_ROWS: usize = 32;
 
+/// The PWM clock divider is a quarter of the LSB time and needs to be at least 1.
+const MIN_PWM_LSB_NANOSECONDS: u32 = 4;
+
 /// Well above any useful value, and below the 16384 at which the PWM clock divider overflows its 12 bits.
 const MAX_PWM_LSB_NANOSECONDS: u32 = 10_000;
 
@@ -162,9 +165,10 @@ impl RGBMatrixConfig {
             return Err(MatrixCreationError::TooManyParallelChains(max_parallel));
         }
 
-        if !(1..=MAX_PWM_LSB_NANOSECONDS).contains(&self.pwm_lsb_nanoseconds) {
+        if !(MIN_PWM_LSB_NANOSECONDS..=MAX_PWM_LSB_NANOSECONDS).contains(&self.pwm_lsb_nanoseconds)
+        {
             return Err(MatrixCreationError::InvalidConfig(format!(
-                "pwm_lsb_nanoseconds needs to be from 1 to {MAX_PWM_LSB_NANOSECONDS}, but is {}.",
+                "pwm_lsb_nanoseconds needs to be from {MIN_PWM_LSB_NANOSECONDS} to {MAX_PWM_LSB_NANOSECONDS}, but is {}.",
                 self.pwm_lsb_nanoseconds
             )));
         }
