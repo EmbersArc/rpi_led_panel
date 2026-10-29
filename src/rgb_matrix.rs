@@ -9,7 +9,10 @@ use std::{
     thread::{JoinHandle, spawn},
     time::Duration,
 };
-use thread_priority::{ThreadPriority, set_current_thread_priority};
+use thread_priority::{
+    RealtimeThreadSchedulePolicy, ThreadPriority, ThreadSchedulePolicy,
+    set_current_thread_priority, set_thread_priority_and_policy, thread_native_id,
+};
 
 use crate::{
     RGBMatrixConfig,
@@ -52,9 +55,18 @@ fn initialize_update_thread(chip: PiChip) {
         );
     }
 
-    // Set the highest thread priority.
-    if set_current_thread_priority(ThreadPriority::Max).is_err() {
-        eprintln!("Could not set thread priority. This might lead to reduced performance.",);
+    // Run as a realtime thread with the highest priority.
+    let realtime = set_thread_priority_and_policy(
+        thread_native_id(),
+        ThreadPriority::Max,
+        ThreadSchedulePolicy::Realtime(RealtimeThreadSchedulePolicy::Fifo),
+    );
+    if realtime.is_err() {
+        eprintln!("Could not set realtime scheduling. This might lead to flickering.");
+        // Fall back to the highest non-realtime priority.
+        if set_current_thread_priority(ThreadPriority::Max).is_err() {
+            eprintln!("Could not set thread priority. This might lead to reduced performance.");
+        }
     }
 }
 
