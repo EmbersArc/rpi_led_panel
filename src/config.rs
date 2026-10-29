@@ -78,7 +78,7 @@ pub struct RGBMatrixConfig {
     #[argh(option, default = "1")]
     pub parallel: usize,
     /// typically left empty, but some panels need a particular initialization sequence. This can be e.g.
-    /// "FM6126A" for that particular panel type.
+    /// "FM6126" or "FM6127" for those panel types.
     #[argh(option)]
     pub panel_type: Option<PanelType>,
     /// the kind of multiplexing mapper.
