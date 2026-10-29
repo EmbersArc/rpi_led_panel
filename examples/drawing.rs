@@ -46,7 +46,6 @@ fn main() {
     );
 
     for step in 0..=u64::MAX {
-        canvas.fill(0, 0, 0);
         circle.draw(canvas.as_mut()).unwrap();
         [diagonal1, diagonal2, top, bottom, left, right]
             .iter()
