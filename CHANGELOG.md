@@ -19,6 +19,7 @@
 - Report failures of the update thread during initialization instead of a timeout, and return an error instead of panicking when the registers can't be mapped.
 - Validate the configuration up front instead of panicking on values like `rows > 64`, `parallel = 0` or `refresh_rate = 0`.
 - Fix the `FM6126` and `FM6127` panel initialization, which shifted the register values in reversed bit order and only reached the first panel of a chain.
+- Fix the `P8Outdoor1R1G1B` multiplex mapper.
 
 ## Version 0.9.1
 
