@@ -194,16 +194,14 @@ impl RGBMatrix {
         // Apply the mapping for the panels first.
         if let Some(mapper) = multiplex_mapper {
             let mapper = PixelMapper::Multiplex(mapper);
-            shared_mapper =
-                Self::apply_pixel_mapper(&shared_mapper, &mapper, &config, pixel_designator)?;
+            shared_mapper = Self::apply_pixel_mapper(&shared_mapper, &mapper, pixel_designator)?;
         }
 
         // Apply higher level mappers that might arrange panels.
         for mapper_type in config.pixelmapper.iter() {
             let mapper = mapper_type.create(config.chain_length, config.parallel)?;
             let mapper = PixelMapper::Named(mapper);
-            shared_mapper =
-                Self::apply_pixel_mapper(&shared_mapper, &mapper, &config, pixel_designator)?;
+            shared_mapper = Self::apply_pixel_mapper(&shared_mapper, &mapper, pixel_designator)?;
         }
 
         let dither_start_bits = match config.dither_bits {
@@ -372,14 +370,14 @@ impl RGBMatrix {
     fn apply_pixel_mapper(
         shared_mapper: &PixelDesignatorMap,
         mapper: &PixelMapper,
-        config: &RGBMatrixConfig,
         pixel_designator: PixelDesignator,
     ) -> Result<PixelDesignatorMap, MatrixCreationError> {
         let old_width = shared_mapper.width();
         let old_height = shared_mapper.height();
         let [new_width, new_height] = mapper.get_size_mapping(old_width, old_height)?;
+        // Every pixel is copied from the old map below, so there is no need to compute the physical layout.
         let mut new_mapper =
-            PixelDesignatorMap::new(pixel_designator, new_width, new_height, config);
+            PixelDesignatorMap::new_unmapped(pixel_designator, new_width, new_height);
         for y in 0..new_height {
             for x in 0..new_width {
                 let [orig_x, orig_y] = mapper.map_visible_to_matrix(old_width, old_height, x, y);
@@ -486,5 +484,31 @@ impl Drop for RGBMatrix {
             message_sender.send(ThreadMessage::Shutdown).ok();
             let _result = handle.join();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PixelDesignator, PixelDesignatorMap, PixelMapper, RGBMatrix};
+    use crate::{NamedPixelMapperType, RGBMatrixConfig};
+
+    #[test]
+    fn test_rotate_long_chain() {
+        // Four 64x32 panels in one chain, rotated to be taller than the number of supported parallel chains.
+        let config = RGBMatrixConfig {
+            rows: 32,
+            cols: 64,
+            chain_length: 4,
+            ..Default::default()
+        };
+        let pixel_designator = PixelDesignator::new(&config.hardware_mapping, config.led_sequence);
+        let map = PixelDesignatorMap::new(pixel_designator, 256, 32, &config);
+        let mapper = PixelMapper::Named(NamedPixelMapperType::Rotate(90).create(4, 1).unwrap());
+
+        let rotated = RGBMatrix::apply_pixel_mapper(&map, &mapper, pixel_designator).unwrap();
+
+        assert_eq!((rotated.width(), rotated.height()), (32, 256));
+        assert_eq!(rotated.get(0, 0), map.get(255, 0));
+        assert_eq!(rotated.get(31, 255), map.get(0, 31));
     }
 }

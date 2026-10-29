@@ -54,7 +54,7 @@ impl LedSequence {
 
 const UNUSED_GPIO_WORD: u32 = u32::MAX;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct PixelDesignator {
     /// Offset into the bitplane buffer, or [`UNUSED_GPIO_WORD`].
     gpio_word: u32,
@@ -87,6 +87,20 @@ pub(crate) struct PixelDesignatorMap {
 }
 
 impl PixelDesignatorMap {
+    /// A map in which every pixel has the default designator, for a pixel mapper to fill in.
+    pub(crate) fn new_unmapped(
+        pixel_designator: PixelDesignator,
+        width: usize,
+        height: usize,
+    ) -> Self {
+        Self {
+            width,
+            height,
+            pixel_designator,
+            buffer: vec![pixel_designator; width * height],
+        }
+    }
+
     pub(crate) fn new(
         pixel_designator: PixelDesignator,
         width: usize,
