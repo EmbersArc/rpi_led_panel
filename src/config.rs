@@ -3,12 +3,18 @@ use argh::FromArgs;
 use crate::{
     HardwareMapping, PiChip, canvas::LedSequence, init_sequence::PanelType,
     multiplex_mapper::MultiplexMapperType, named_pixel_mapper::NamedPixelMapperType,
-    row_address_setter::RowAddressSetterType,
+    rgb_matrix::MatrixCreationError, row_address_setter::RowAddressSetterType,
 };
 
 /// Typically, a Hub75 panel is split in two half displays, so that a 1:16 multiplexing actually multiplexes
 /// over two half displays and gives 32 lines.
 pub(crate) const SUB_PANELS: usize = 2;
+
+/// The row address lines A to E can select up to 32 double rows.
+const MAX_DOUBLE_ROWS: usize = 32;
+
+/// Well above any useful value, and below the 16384 at which the PWM clock divider overflows its 12 bits.
+const MAX_PWM_LSB_NANOSECONDS: u32 = 10_000;
 
 /// Maximum usable bit planes. 11 bits seems to be a sweet spot in which we still get somewhat useful refresh
 /// rate and have good color richness. This is the default setting. However, in low-light situations, we want
@@ -110,6 +116,46 @@ pub struct RGBMatrixConfig {
 impl RGBMatrixConfig {
     pub(crate) const fn double_rows(&self) -> usize {
         self.rows / SUB_PANELS
+    }
+
+    /// Reject options that the display update can't handle. Multiplexing divides the rows by its
+    /// `stretch_factor`, so they need to stay a multiple of [`SUB_PANELS`] after that.
+    pub(crate) fn validate(&self, stretch_factor: usize) -> Result<(), MatrixCreationError> {
+        let rows_step = SUB_PANELS * stretch_factor;
+        let max_rows = MAX_DOUBLE_ROWS * rows_step;
+        if !(rows_step..=max_rows).contains(&self.rows) || !self.rows.is_multiple_of(rows_step) {
+            return Err(MatrixCreationError::InvalidConfig(format!(
+                "rows needs to be a multiple of {rows_step} from {rows_step} to {max_rows}, but is {}.",
+                self.rows
+            )));
+        }
+
+        for (name, value) in [
+            ("cols", self.cols),
+            ("chain_length", self.chain_length),
+            ("parallel", self.parallel),
+            ("refresh_rate", self.refresh_rate),
+        ] {
+            if value == 0 {
+                return Err(MatrixCreationError::InvalidConfig(format!(
+                    "{name} needs to be at least 1."
+                )));
+            }
+        }
+
+        let max_parallel = self.hardware_mapping.max_parallel_chains();
+        if self.parallel > max_parallel {
+            return Err(MatrixCreationError::TooManyParallelChains(max_parallel));
+        }
+
+        if !(1..=MAX_PWM_LSB_NANOSECONDS).contains(&self.pwm_lsb_nanoseconds) {
+            return Err(MatrixCreationError::InvalidConfig(format!(
+                "pwm_lsb_nanoseconds needs to be from 1 to {MAX_PWM_LSB_NANOSECONDS}, but is {}.",
+                self.pwm_lsb_nanoseconds
+            )));
+        }
+
+        Ok(())
     }
 }
 

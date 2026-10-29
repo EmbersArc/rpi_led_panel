@@ -20,6 +20,7 @@ use crate::{
     canvas::{Canvas, PixelDesignator, PixelDesignatorMap},
     chip::PiChip,
     gpio::{Gpio, GpioInitializationError},
+    multiplex_mapper::MultiplexMapperType,
     pixel_mapper::PixelMapper,
     utils::{FrameRateMonitor, linux_has_isol_cpu, set_thread_affinity},
 };
@@ -98,6 +99,7 @@ fn panic_message(payload: &(dyn Any + Send)) -> String {
 #[non_exhaustive]
 pub enum MatrixCreationError {
     ChipDeterminationError,
+    InvalidConfig(String),
     TooManyParallelChains(usize),
     InvalidDitherBits(usize),
     ThreadTimedOut,
@@ -114,6 +116,9 @@ impl Display for MatrixCreationError {
         match self {
             MatrixCreationError::ChipDeterminationError => {
                 f.write_str("Failed to automatically determine Raspberry Pi model.")
+            }
+            MatrixCreationError::InvalidConfig(message) => {
+                write!(f, "Invalid configuration: {message}")
             }
             MatrixCreationError::TooManyParallelChains(max) => {
                 write!(f, "GPIO mapping only supports up to {max} parallel panels.")
@@ -179,6 +184,13 @@ impl RGBMatrix {
         mut config: RGBMatrixConfig,
         requested_inputs: u32,
     ) -> Result<(Self, Box<Canvas>), MatrixCreationError> {
+        let multiplex_mapper = config.multiplexing.map(MultiplexMapperType::create);
+        let stretch_factor = multiplex_mapper
+            .as_ref()
+            .map(|mapper| mapper.panel_stretch_factor())
+            .unwrap_or(1);
+        config.validate(stretch_factor)?;
+
         // Check if we can access the memory before doing anything else.
         OpenOptions::new()
             .read(true)
@@ -192,15 +204,9 @@ impl RGBMatrix {
             PiChip::determine().ok_or(MatrixCreationError::ChipDeterminationError)?
         };
 
-        let max_parallel = config.hardware_mapping.max_parallel_chains();
-        if config.parallel > max_parallel {
-            return Err(MatrixCreationError::TooManyParallelChains(max_parallel));
-        }
-
-        let multiplex_mapper = config.multiplexing.as_ref().map(|mapper_type| {
+        let multiplex_mapper = multiplex_mapper.map(|mut mapper| {
             // The multiplexers might choose to have a different physical layout.
             // We need to configure that first before setting up the hardware.
-            let mut mapper = mapper_type.create();
             mapper.edit_rows_cols(&mut config.rows, &mut config.cols);
             mapper
         });
