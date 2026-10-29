@@ -162,7 +162,10 @@ impl RGBMatrixConfig {
 
         let max_parallel = self.hardware_mapping.max_parallel_chains();
         if self.parallel > max_parallel {
-            return Err(MatrixCreationError::TooManyParallelChains(max_parallel));
+            return Err(MatrixCreationError::InvalidConfig(format!(
+                "parallel needs to be at most {max_parallel} for this hardware mapping, but is {}.",
+                self.parallel
+            )));
         }
 
         if !(MIN_PWM_LSB_NANOSECONDS..=MAX_PWM_LSB_NANOSECONDS).contains(&self.pwm_lsb_nanoseconds)
@@ -188,7 +191,10 @@ impl RGBMatrixConfig {
         }
 
         if self.dither_bits > MAX_DITHER_BITS {
-            return Err(MatrixCreationError::InvalidDitherBits(self.dither_bits));
+            return Err(MatrixCreationError::InvalidConfig(format!(
+                "dither_bits needs to be at most {MAX_DITHER_BITS}, but is {}.",
+                self.dither_bits
+            )));
         }
 
         Ok(())

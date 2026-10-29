@@ -4,6 +4,7 @@ use std::{
     error::Error,
     fmt::{Display, Formatter},
     fs::{OpenOptions, write},
+    io,
     mem::replace,
     sync::Arc,
     sync::atomic::{AtomicU32, Ordering},
@@ -101,16 +102,23 @@ fn panic_message(payload: &(dyn Any + Send)) -> String {
 pub enum MatrixCreationError {
     ChipDeterminationError,
     InvalidConfig(String),
-    TooManyParallelChains(usize),
-    InvalidDitherBits(usize),
     ThreadTimedOut,
     ThreadPanicked(String),
     GpioError(GpioInitializationError),
-    MemoryAccessError,
+    MemoryAccessError(io::Error),
     PixelMapperError(String),
 }
 
-impl Error for MatrixCreationError {}
+impl Error for MatrixCreationError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            // The GPIO error is displayed as is, so its source comes next in the chain.
+            MatrixCreationError::GpioError(error) => error.source(),
+            MatrixCreationError::MemoryAccessError(error) => Some(error),
+            _ => None,
+        }
+    }
+}
 
 impl Display for MatrixCreationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -121,12 +129,6 @@ impl Display for MatrixCreationError {
             MatrixCreationError::InvalidConfig(message) => {
                 write!(f, "Invalid configuration: {message}")
             }
-            MatrixCreationError::TooManyParallelChains(max) => {
-                write!(f, "GPIO mapping only supports up to {max} parallel panels.")
-            }
-            MatrixCreationError::InvalidDitherBits(value) => {
-                write!(f, "Unsupported dither bits '{value}'.")
-            }
             MatrixCreationError::ThreadTimedOut => {
                 f.write_str("The update thread did not return in time.")
             }
@@ -136,12 +138,14 @@ impl Display for MatrixCreationError {
                     "The update thread panicked during initialization: {message}"
                 )
             }
-            MatrixCreationError::GpioError(error) => {
-                write!(f, "GPIO initialization error: {error}")
+            MatrixCreationError::GpioError(error) => error.fmt(f),
+            MatrixCreationError::MemoryAccessError(error) => {
+                f.write_str("Failed to open '/dev/mem'.")?;
+                if error.kind() == io::ErrorKind::PermissionDenied {
+                    f.write_str(" Not running with root privileges?")?;
+                }
+                Ok(())
             }
-            MatrixCreationError::MemoryAccessError => f.write_str(
-                "Failed to access the physical memory. Not running with root privileges?",
-            ),
             MatrixCreationError::PixelMapperError(message) => {
                 write!(f, "Error in pixel mapper: {message}")
             }
@@ -210,7 +214,7 @@ impl RGBMatrix {
             .read(true)
             .write(true)
             .open("/dev/mem")
-            .map_err(|_| MatrixCreationError::MemoryAccessError)?;
+            .map_err(MatrixCreationError::MemoryAccessError)?;
 
         let chip = config
             .pi_chip
@@ -570,6 +574,8 @@ impl Drop for RGBMatrix {
 mod tests {
     use std::{
         collections::HashSet,
+        error::Error,
+        io,
         sync::Arc,
         sync::mpsc::{channel, sync_channel},
         thread::spawn,
@@ -582,7 +588,9 @@ mod tests {
         MatrixCreationError, PixelDesignator, PixelDesignatorMap, PixelMapper, RGBMatrix,
         panic_message,
     };
-    use crate::{MultiplexMapperType, NamedPixelMapperType, RGBMatrixConfig};
+    use crate::{
+        GpioInitializationError, MultiplexMapperType, NamedPixelMapperType, RGBMatrixConfig,
+    };
 
     #[test]
     fn test_panic_message() {
@@ -592,6 +600,30 @@ mod tests {
             .join()
             .unwrap_err();
         assert_eq!(panic_message(formatted.as_ref()), "formatted 1");
+    }
+
+    #[test]
+    fn test_error_sources() {
+        let denied = MatrixCreationError::MemoryAccessError(io::ErrorKind::PermissionDenied.into());
+        assert!(
+            denied
+                .to_string()
+                .ends_with("Not running with root privileges?")
+        );
+        assert!(denied.source().is_some());
+        let missing = MatrixCreationError::MemoryAccessError(io::ErrorKind::NotFound.into());
+        assert_eq!(missing.to_string(), "Failed to open '/dev/mem'.");
+
+        // The wrapped GPIO error is shown directly, followed by its own source.
+        let gpio = GpioInitializationError::FailedRegisterMapping(io::ErrorKind::NotFound.into());
+        let gpio_message = gpio.to_string();
+        let wrapped = MatrixCreationError::GpioError(gpio);
+        assert_eq!(wrapped.to_string(), gpio_message);
+        let source = wrapped.source().unwrap();
+        assert_eq!(
+            source.to_string(),
+            io::Error::from(io::ErrorKind::NotFound).to_string()
+        );
     }
 
     #[test]

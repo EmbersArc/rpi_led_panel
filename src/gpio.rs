@@ -25,7 +25,14 @@ pub enum GpioInitializationError {
     FailedRegisterMapping(io::Error),
 }
 
-impl Error for GpioInitializationError {}
+impl Error for GpioInitializationError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            GpioInitializationError::FailedRegisterMapping(error) => Some(error),
+            _ => None,
+        }
+    }
+}
 
 impl Display for GpioInitializationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -42,14 +49,11 @@ impl Display for GpioInitializationError {
                 `/etc/modprobe.d/alsa-blacklist.conf`\n\
                 Finally, reboot the system and try again.",
             ),
-            GpioInitializationError::FailedPrivilegeDrop(e) => {
-                f.write_str(&format!("Failed to drop privileges. Reason: {}", e))
+            GpioInitializationError::FailedPrivilegeDrop(reason) => {
+                write!(f, "Failed to drop privileges. Reason: {reason}")
             }
-            GpioInitializationError::FailedRegisterMapping(e) => {
-                write!(
-                    f,
-                    "Failed to map the peripheral registers from '/dev/mem': {e}"
-                )
+            GpioInitializationError::FailedRegisterMapping(_) => {
+                f.write_str("Failed to map the peripheral registers from '/dev/mem'.")
             }
         }
     }

@@ -29,6 +29,7 @@
 - **Breaking:** Turn the CLI `interlaced` argument into a switch.
 - **Breaking:** Replace the `drop_privs` option with the `no_drop_privs` switch.
 - Report warnings and suggestions through the `log` crate instead of printing them to stderr.
+- Changed many error types and added more information to them.
 
 ## Version 0.9.1
 
