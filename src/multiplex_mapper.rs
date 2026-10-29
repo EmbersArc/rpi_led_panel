@@ -1,4 +1,34 @@
+use std::fmt::{Display, Formatter};
+
 use crate::{error::InvalidVariantError, rgb_matrix::MatrixCreationError};
+
+/// The panel rows or columns that a multiplex mapper works with.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum PanelDimension {
+    Any,
+    Exactly(usize),
+    MultipleOf(usize),
+}
+
+impl PanelDimension {
+    pub(crate) fn contains(self, value: usize) -> bool {
+        match self {
+            PanelDimension::Any => true,
+            PanelDimension::Exactly(size) => value == size,
+            PanelDimension::MultipleOf(step) => value.is_multiple_of(step),
+        }
+    }
+}
+
+impl Display for PanelDimension {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PanelDimension::Any => f.write_str("any number"),
+            PanelDimension::Exactly(size) => write!(f, "{size}"),
+            PanelDimension::MultipleOf(step) => write!(f, "a multiple of {step}"),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumString, strum::VariantNames)]
 #[strum(
@@ -55,6 +85,30 @@ impl MultiplexMapperType {
             MultiplexMapperType::P10Outdoor32x16HalfScan => {
                 Box::new(P10Outdoor32x16HalfScanMapper::new())
             }
+        }
+    }
+
+    /// The panel dimensions that the mapping works for.
+    pub(crate) const fn supported_panel_size(self) -> [PanelDimension; 2] {
+        use PanelDimension::{Any, Exactly, MultipleOf};
+        match self {
+            MultiplexMapperType::Stripe
+            | MultiplexMapperType::Checkered
+            | MultiplexMapperType::FlippedStripe => [Any, Any],
+            MultiplexMapperType::Spiral => [Any, MultipleOf(4)],
+            MultiplexMapperType::ZStripe08
+            | MultiplexMapperType::ZStripe80
+            | MultiplexMapperType::InversedZStripe
+            | MultiplexMapperType::P10Outdoor1R1G1B1
+            | MultiplexMapperType::P10Outdoor1R1G1B2
+            | MultiplexMapperType::P10Outdoor1R1G1B3 => [MultipleOf(8), MultipleOf(8)],
+            MultiplexMapperType::ZStripe44 => [MultipleOf(8), MultipleOf(4)],
+            MultiplexMapperType::Coreman => [Exactly(32), MultipleOf(2)],
+            MultiplexMapperType::Kaler2Scan | MultiplexMapperType::P10Coreman => [Any, Exactly(32)],
+            MultiplexMapperType::P10Z => [Exactly(16), Exactly(32)],
+            MultiplexMapperType::QiangLiQ8 => [Exactly(20), MultipleOf(4)],
+            MultiplexMapperType::P8Outdoor1R1G1B => [Exactly(20), Exactly(40)],
+            MultiplexMapperType::P10Outdoor32x16HalfScan => [Exactly(16), MultipleOf(8)],
         }
     }
 }

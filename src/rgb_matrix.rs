@@ -202,13 +202,9 @@ impl RGBMatrix {
         mut config: RGBMatrixConfig,
         requested_inputs: u32,
     ) -> Result<(Self, Box<Canvas>), MatrixCreationError> {
-        let mut multiplex_mapper = config.multiplexing.map(MultiplexMapperType::create);
-        let stretch_factor = multiplex_mapper
-            .as_ref()
-            .map_or(1, |mapper| mapper.panel_stretch_factor());
-        config.validate(stretch_factor)?;
+        let shared_mapper = Self::create_pixel_map(&mut config)?;
 
-        // Check if we can access the memory before doing anything else.
+        // Check if we can access the memory before setting up the hardware.
         OpenOptions::new()
             .read(true)
             .write(true)
@@ -219,30 +215,6 @@ impl RGBMatrix {
             .pi_chip
             .or_else(PiChip::determine)
             .ok_or(MatrixCreationError::ChipDeterminationError)?;
-
-        // The multiplexers might choose to have a different physical layout.
-        // We need to configure that first before setting up the hardware.
-        if let Some(mapper) = &mut multiplex_mapper {
-            mapper.edit_rows_cols(&mut config.rows, &mut config.cols);
-        }
-
-        let pixel_designator = PixelDesignator::new(&config.hardware_mapping, config.led_sequence);
-        let width = config.cols * config.chain_length;
-        let height = config.rows * config.parallel;
-        let mut shared_mapper = PixelDesignatorMap::new(pixel_designator, width, height, &config);
-
-        // Apply the mapping for the panels first.
-        if let Some(mapper) = multiplex_mapper {
-            let mapper = PixelMapper::Multiplex(mapper);
-            shared_mapper = Self::apply_pixel_mapper(&shared_mapper, &mapper, pixel_designator)?;
-        }
-
-        // Apply higher level mappers that might arrange panels.
-        for mapper_type in config.pixelmapper.iter() {
-            let mapper = mapper_type.create(config.chain_length, config.parallel)?;
-            let mapper = PixelMapper::Named(mapper);
-            shared_mapper = Self::apply_pixel_mapper(&shared_mapper, &mapper, pixel_designator)?;
-        }
 
         let dither_start_bits = match config.dither_bits {
             0 => [0, 0, 0, 0],
@@ -423,6 +395,44 @@ impl RGBMatrix {
         Ok((rgbmatrix, canvas))
     }
 
+    /// Validate the config and map the canvas pixels to the bitplane buffer. Multiplexing can change the
+    /// physical layout of the panels, in which case the rows and columns of the config are updated to match.
+    fn create_pixel_map(
+        config: &mut RGBMatrixConfig,
+    ) -> Result<PixelDesignatorMap, MatrixCreationError> {
+        let mut multiplex_mapper = config.multiplexing.map(MultiplexMapperType::create);
+        let stretch_factor = multiplex_mapper
+            .as_ref()
+            .map_or(1, |mapper| mapper.panel_stretch_factor());
+        config.validate(stretch_factor)?;
+
+        // The multiplexers might choose to have a different physical layout.
+        // We need to configure that first before setting up the hardware.
+        if let Some(mapper) = &mut multiplex_mapper {
+            mapper.edit_rows_cols(&mut config.rows, &mut config.cols);
+        }
+
+        let pixel_designator = PixelDesignator::new(&config.hardware_mapping, config.led_sequence);
+        let width = config.cols * config.chain_length;
+        let height = config.rows * config.parallel;
+        let mut shared_mapper = PixelDesignatorMap::new(pixel_designator, width, height, config);
+
+        // Apply the mapping for the panels first.
+        if let Some(mapper) = multiplex_mapper {
+            let mapper = PixelMapper::Multiplex(mapper);
+            shared_mapper = Self::apply_pixel_mapper(&shared_mapper, &mapper, pixel_designator)?;
+        }
+
+        // Apply higher level mappers that might arrange panels.
+        for mapper_type in config.pixelmapper.iter() {
+            let mapper = mapper_type.create(config.chain_length, config.parallel)?;
+            let mapper = PixelMapper::Named(mapper);
+            shared_mapper = Self::apply_pixel_mapper(&shared_mapper, &mapper, pixel_designator)?;
+        }
+
+        Ok(shared_mapper)
+    }
+
     fn apply_pixel_mapper(
         shared_mapper: &PixelDesignatorMap,
         mapper: &PixelMapper,
@@ -549,8 +559,15 @@ impl Drop for RGBMatrix {
 
 #[cfg(test)]
 mod tests {
-    use super::{PixelDesignator, PixelDesignatorMap, PixelMapper, RGBMatrix, panic_message};
-    use crate::{NamedPixelMapperType, RGBMatrixConfig};
+    use std::collections::HashSet;
+
+    use strum::VariantNames;
+
+    use super::{
+        MatrixCreationError, PixelDesignator, PixelDesignatorMap, PixelMapper, RGBMatrix,
+        panic_message,
+    };
+    use crate::{MultiplexMapperType, NamedPixelMapperType, RGBMatrixConfig};
 
     #[test]
     fn test_panic_message() {
@@ -580,5 +597,40 @@ mod tests {
         assert_eq!((rotated.width(), rotated.height()), (32, 256));
         assert_eq!(rotated.get(0, 0), map.get(255, 0));
         assert_eq!(rotated.get(31, 255), map.get(0, 31));
+    }
+
+    #[test]
+    fn test_multiplex_mappers() {
+        // Every panel size that a mapper accepts needs to light a different LED for each pixel.
+        for name in MultiplexMapperType::VARIANTS {
+            let multiplexing: MultiplexMapperType = name.parse().unwrap();
+            let mut accepted_sizes = 0;
+            for rows in (2..=48).step_by(2) {
+                for cols in 1..=48 {
+                    let mut config = RGBMatrixConfig {
+                        rows,
+                        cols,
+                        chain_length: 2,
+                        parallel: 2,
+                        multiplexing: Some(multiplexing),
+                        ..Default::default()
+                    };
+                    let panel = format!("{name} with {rows}x{cols} panels");
+                    let map = match RGBMatrix::create_pixel_map(&mut config) {
+                        Err(MatrixCreationError::InvalidConfig(_)) => continue,
+                        result => result.unwrap_or_else(|error| panic!("{panel}: {error}")),
+                    };
+                    accepted_sizes += 1;
+
+                    assert_eq!((map.width(), map.height()), (2 * cols, 2 * rows), "{panel}");
+                    let designators: HashSet<_> = (0..map.height())
+                        .flat_map(|y| (0..map.width()).map(move |x| (x, y)))
+                        .map(|(x, y)| *map.get(x, y).unwrap())
+                        .collect();
+                    assert_eq!(designators.len(), 4 * rows * cols, "{panel}");
+                }
+            }
+            assert!(accepted_sizes > 0, "{name} accepts no panel size");
+        }
     }
 }

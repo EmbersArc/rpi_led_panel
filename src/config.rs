@@ -121,8 +121,8 @@ impl RGBMatrixConfig {
         self.rows / SUB_PANELS
     }
 
-    /// Reject options that the display update can't handle. Multiplexing divides the rows by its
-    /// `stretch_factor`, so they need to stay a multiple of [`SUB_PANELS`] after that.
+    /// Reject options that the display update or the multiplex mapper can't handle. Multiplexing divides the
+    /// rows by its `stretch_factor`, so they need to stay a multiple of [`SUB_PANELS`] after that.
     pub(crate) fn validate(&self, stretch_factor: usize) -> Result<(), MatrixCreationError> {
         let rows_step = SUB_PANELS * stretch_factor;
         let max_rows = MAX_DOUBLE_ROWS * rows_step;
@@ -143,6 +143,17 @@ impl RGBMatrixConfig {
                 return Err(MatrixCreationError::InvalidConfig(format!(
                     "{name} needs to be at least 1."
                 )));
+            }
+        }
+
+        if let Some(multiplexing) = self.multiplexing {
+            let [rows, cols] = multiplexing.supported_panel_size();
+            for (name, value, supported) in [("rows", self.rows, rows), ("cols", self.cols, cols)] {
+                if !supported.contains(value) {
+                    return Err(MatrixCreationError::InvalidConfig(format!(
+                        "{name} needs to be {supported} for {multiplexing:?} multiplexing, but is {value}."
+                    )));
+                }
             }
         }
 

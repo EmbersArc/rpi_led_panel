@@ -54,7 +54,7 @@ impl LedSequence {
 
 const UNUSED_GPIO_WORD: u32 = u32::MAX;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct PixelDesignator {
     /// Offset into the bitplane buffer, or [`UNUSED_GPIO_WORD`].
     gpio_word: u32,
