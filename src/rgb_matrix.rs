@@ -233,7 +233,7 @@ impl RGBMatrix {
             0 => [0, 0, 0, 0],
             1 => [0, 1, 0, 1],
             2 => [0, 1, 2, 2],
-            _ => return Err(MatrixCreationError::InvalidDitherBits(config.dither_bits)),
+            _ => unreachable!("dither_bits is checked in RGBMatrixConfig::validate"),
         };
 
         // Create two canvases, one for the display update thread and one for the user to modify. They will be
@@ -259,9 +259,10 @@ impl RGBMatrix {
             let mut gpio = match Gpio::new(chip, &config, address_setter.as_ref()) {
                 Ok(gpio) => gpio,
                 Err(error) => {
+                    // Fails only if the main thread stopped waiting, in which case there is no one to tell.
                     thread_start_result_sender
                         .send(Err(MatrixCreationError::GpioError(error)))
-                        .expect("Could not send to main thread.");
+                        .ok();
                     return;
                 }
             };
@@ -283,9 +284,13 @@ impl RGBMatrix {
                 .get_color_clock_mask(config.parallel);
 
             let enabled_input_bits = gpio.request_enabled_inputs(requested_inputs);
-            thread_start_result_sender
+            // The main thread stopped waiting and returned an error, so nobody will use the matrix.
+            if thread_start_result_sender
                 .send(Ok(enabled_input_bits))
-                .expect("Could not send to main thread.");
+                .is_err()
+            {
+                return;
+            }
 
             let mut suspended = false;
 

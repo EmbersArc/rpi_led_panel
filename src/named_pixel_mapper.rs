@@ -125,10 +125,7 @@ impl NamedPixelMapperType {
     }
 }
 
-/// A pixel mapper is a way for you to map pixels of LED matrixes to a different
-/// layout. If you have an implementation of a [`PixelMapper`], you can give it
-/// to the [`RGBMatrix::apply_pixel_mapper`], which then presents you a canvas
-/// that has the new [`visible_width`], [`visible_height`].
+/// A pixel mapper that arranges the panels, as chosen with [`NamedPixelMapperType`].
 pub(crate) trait NamedPixelMapper {
     fn get_size_mapping(
         &self,
@@ -214,9 +211,8 @@ struct UArrangeMapper {
 impl UArrangeMapper {
     fn new_with_parameters(chain: usize, parallel: usize) -> Result<Self, MatrixCreationError> {
         if chain < 2 {
-            let message =
-                "UArrangeMapper: Chain length needs to be larger than 2 for useful folding"
-                    .to_string();
+            let message = "UArrangeMapper: Chain length needs to be at least 2 for useful folding"
+                .to_string();
             return Err(MatrixCreationError::PixelMapperError(message));
         }
         if !chain.is_multiple_of(2) {

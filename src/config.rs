@@ -16,6 +16,9 @@ const MAX_DOUBLE_ROWS: usize = 32;
 /// Well above any useful value, and below the 16384 at which the PWM clock divider overflows its 12 bits.
 const MAX_PWM_LSB_NANOSECONDS: u32 = 10_000;
 
+/// The display update has dither sequences for up to this many bits.
+const MAX_DITHER_BITS: usize = 2;
+
 /// Maximum usable bit planes. 11 bits seems to be a sweet spot in which we still get somewhat useful refresh
 /// rate and have good color richness. This is the default setting. However, in low-light situations, we want
 /// to be able to scale down brightness more by having more bits at the bottom.
@@ -153,6 +156,24 @@ impl RGBMatrixConfig {
                 "pwm_lsb_nanoseconds needs to be from 1 to {MAX_PWM_LSB_NANOSECONDS}, but is {}.",
                 self.pwm_lsb_nanoseconds
             )));
+        }
+
+        if !(1..=K_BIT_PLANES).contains(&self.pwm_bits) {
+            return Err(MatrixCreationError::InvalidConfig(format!(
+                "pwm_bits needs to be from 1 to {K_BIT_PLANES}, but is {}.",
+                self.pwm_bits
+            )));
+        }
+
+        if !(1..=100).contains(&self.led_brightness) {
+            return Err(MatrixCreationError::InvalidConfig(format!(
+                "led_brightness needs to be from 1 to 100, but is {}.",
+                self.led_brightness
+            )));
+        }
+
+        if self.dither_bits > MAX_DITHER_BITS {
+            return Err(MatrixCreationError::InvalidDitherBits(self.dither_bits));
         }
 
         Ok(())
