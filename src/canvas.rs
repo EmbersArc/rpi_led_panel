@@ -346,7 +346,8 @@ pub mod embedded_graphics_support {
         Pixel,
         draw_target::DrawTarget,
         pixelcolor::Rgb888,
-        prelude::{OriginDimensions, RgbColor, Size},
+        prelude::{Dimensions, OriginDimensions, Point, RgbColor, Size},
+        primitives::{PointsIter, Rectangle},
     };
 
     impl OriginDimensions for Canvas {
@@ -377,6 +378,20 @@ pub mod embedded_graphics_support {
                         color.g(),
                         color.b(),
                     );
+                }
+            }
+            Ok(())
+        }
+
+        fn fill_solid(&mut self, area: &Rectangle, color: Self::Color) -> Result<(), Self::Error> {
+            // Clip once instead of checking every pixel.
+            let bounding_box = self.bounding_box();
+            let area = area.intersection(&bounding_box);
+            if area == bounding_box {
+                self.fill(color.r(), color.g(), color.b());
+            } else {
+                for Point { x, y } in area.points() {
+                    self.set_pixel(x as usize, y as usize, color.r(), color.g(), color.b());
                 }
             }
             Ok(())
