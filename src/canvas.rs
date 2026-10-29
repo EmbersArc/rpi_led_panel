@@ -280,7 +280,7 @@ impl Canvas {
         // Depending on if we do dithering, we might not always show the lowest bits.
         let start_bit = (K_BIT_PLANES - self.pwm_bits).max(pwm_low_bit);
 
-        let half_double = self.double_rows / 2;
+        let half_double = self.double_rows.div_ceil(2);
         for row_loop in 0..self.double_rows {
             let d_row = if self.interlaced {
                 if row_loop < half_double {

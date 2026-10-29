@@ -20,6 +20,7 @@
 - Validate the configuration up front instead of panicking on values like `rows > 64`, `parallel = 0` or `refresh_rate = 0`.
 - Fix the `FM6126` and `FM6127` panel initialization, which shifted the register values in reversed bit order and only reached the first panel of a chain.
 - Fix the `P8Outdoor1R1G1B` multiplex mapper.
+- Fix a panic in interlaced mode when the number of rows is not a multiple of 4.
 
 ## Version 0.9.1
 
