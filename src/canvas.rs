@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::{
     RGBMatrixConfig, color::ColorLookup, config::K_BIT_PLANES, error::InvalidVariantError,
     gpio::Gpio, hardware_mapping::HardwareMapping, row_address_setter::RowAddressSetter,
@@ -152,16 +154,16 @@ pub struct Canvas {
     cols: usize,
     double_rows: usize,
     bitplane_buffer: Vec<u32>,
-    shared_mapper: PixelDesignatorMap,
+    shared_mapper: Arc<PixelDesignatorMap>,
     pwm_bits: usize,
     brightness: u8,
-    color_lookup: ColorLookup,
+    color_lookup: &'static ColorLookup,
     interlaced: bool,
 }
 
 impl Canvas {
     pub(crate) fn new(config: &RGBMatrixConfig, shared_mapper: PixelDesignatorMap) -> Self {
-        let color_lookup = ColorLookup::new_cie1931();
+        let color_lookup = ColorLookup::cie1931();
         let rows = config.rows * config.parallel;
         let cols = config.cols * config.chain_length;
         let double_rows = config.double_rows();
@@ -170,7 +172,7 @@ impl Canvas {
             cols,
             double_rows,
             bitplane_buffer: vec![0u32; double_rows * cols * K_BIT_PLANES],
-            shared_mapper,
+            shared_mapper: Arc::new(shared_mapper),
             pwm_bits: config.pwm_bits,
             brightness: config.led_brightness.clamp(1, 100),
             color_lookup,

@@ -5,6 +5,7 @@
 - Fix SIGBUS on aarch64: Read the system timer as two 32-bit registers. [#28](https://github.com/EmbersArc/rpi_led_panel/pull/28)
 - Fix automatic chip detection on various kernels.
 - Run the display update thread with realtime (`SCHED_FIFO`) scheduling.
+- Share the color lookup table and pixel mapping between canvases instead of copying them.
 - Wake up early from sleeps and busy wait the rest to avoid overshooting.
 
 ## Version 0.9.1
