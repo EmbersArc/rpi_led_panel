@@ -26,7 +26,7 @@ fn main() {
         ),
     );
 
-    for step in 0.. {
+    for step in 0..=u64::MAX {
         canvas.fill(0, 0, 0);
         image.draw(canvas.as_mut()).unwrap();
         canvas = matrix.update_on_vsync(canvas);
