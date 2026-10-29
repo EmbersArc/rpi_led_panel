@@ -12,6 +12,7 @@ const IMAGE_DATA: &[u8] = include_bytes!("../assets/ferris_test_card.rgb");
 const IMAGE_SIZE: usize = 64;
 
 fn main() {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     let config: RGBMatrixConfig = argh::from_env();
     let rows = config.rows;
     let cols = config.cols;

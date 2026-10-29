@@ -1,3 +1,4 @@
+use log::{info, warn};
 use std::{
     any::Any,
     error::Error,
@@ -39,12 +40,12 @@ fn initialize_update_thread(chip: PiChip) {
     // Pin the thread to the last core to avoid the flicker resulting from context switching.
     let last_core_id = chip.num_cores() - 1;
     if !set_thread_affinity(last_core_id) {
-        eprintln!("Could not pin the display update thread to core {last_core_id}.");
+        warn!("Could not pin the display update thread to core {last_core_id}.");
     }
 
     // If the user has not setup isolcpus, let them know about the performance improvement.
     if chip.num_cores() > 1 && !linux_has_isol_cpu(last_core_id) {
-        eprintln!(
+        info!(
             "Suggestion: to slightly improve display update, add\n\tisolcpus={last_core_id}\nat \
             the end of /boot/cmdline.txt and reboot"
         );
@@ -52,7 +53,7 @@ fn initialize_update_thread(chip: PiChip) {
 
     // Disable realtime throttling.
     if chip.num_cores() > 1 && write("/proc/sys/kernel/sched_rt_runtime_us", "999000").is_err() {
-        eprintln!("Could not disable realtime throttling");
+        warn!("Could not disable realtime throttling");
     }
 
     // Set the last core to performance mode.
@@ -63,7 +64,7 @@ fn initialize_update_thread(chip: PiChip) {
         )
         .is_err()
     {
-        eprintln!(
+        warn!(
             "Could not set core {} to performance mode.",
             last_core_id + 1
         );
@@ -76,10 +77,10 @@ fn initialize_update_thread(chip: PiChip) {
         ThreadSchedulePolicy::Realtime(RealtimeThreadSchedulePolicy::Fifo),
     );
     if realtime.is_err() {
-        eprintln!("Could not set realtime scheduling. This might lead to flickering.");
+        warn!("Could not set realtime scheduling. This might lead to flickering.");
         // Fall back to the highest non-realtime priority.
         if set_current_thread_priority(ThreadPriority::Max).is_err() {
-            eprintln!("Could not set thread priority. This might lead to reduced performance.");
+            warn!("Could not set thread priority. This might lead to reduced performance.");
         }
     }
 }

@@ -11,6 +11,7 @@ use rpi_led_panel::embedded_graphics::{
 use rpi_led_panel::{RGBMatrix, RGBMatrixConfig};
 
 fn main() {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     let config: RGBMatrixConfig = argh::from_env();
     let rows = config.rows as i32;
     let cols = config.cols as i32;

@@ -28,6 +28,7 @@
 - **Breaking:** `receive_new_inputs` returns an `UpdateThreadError` instead of `None` when the update thread shuts down unexpectedly.
 - **Breaking:** Turn the CLI `interlaced` argument into a switch.
 - **Breaking:** Replace the `drop_privs` option with the `no_drop_privs` switch.
+- Report warnings and suggestions through the `log` crate instead of printing them to stderr.
 
 ## Version 0.9.1
 

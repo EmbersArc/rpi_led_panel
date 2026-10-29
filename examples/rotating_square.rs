@@ -18,6 +18,7 @@ fn rotate([x, y]: [f64; 2], angle: f64) -> [f64; 2] {
 }
 
 fn main() {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     let config: RGBMatrixConfig = argh::from_env();
     let rows = config.rows as isize;
     let cols = config.cols as isize;
