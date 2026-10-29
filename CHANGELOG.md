@@ -16,6 +16,7 @@
 - Export the `MatrixCreationError`, `GpioInitializationError` and `InvalidVariantError` error types.
 - Fix the checks for loaded kernel modules and isolated CPUs, which could match the wrong module or CPU.
 - Rotating a long chain no longer panics.
+- Report failures of the update thread during initialization instead of a timeout, and return an error instead of panicking when the registers can't be mapped.
 
 ## Version 0.9.1
 

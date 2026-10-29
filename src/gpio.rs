@@ -1,6 +1,7 @@
 use std::{
     error::Error,
     fmt::{Display, Formatter},
+    io,
     time::Duration,
 };
 
@@ -21,6 +22,7 @@ pub enum GpioInitializationError {
     OneWireProtocolEnabled,
     SoundModuleLoaded,
     FailedPrivilegeDrop(String),
+    FailedRegisterMapping(io::Error),
 }
 
 impl Error for GpioInitializationError {}
@@ -42,6 +44,12 @@ impl Display for GpioInitializationError {
             ),
             GpioInitializationError::FailedPrivilegeDrop(e) => {
                 f.write_str(&format!("Failed to drop privileges. Reason: {}", e))
+            }
+            GpioInitializationError::FailedRegisterMapping(e) => {
+                write!(
+                    f,
+                    "Failed to map the peripheral registers from '/dev/mem': {e}"
+                )
             }
         }
     }
@@ -72,10 +80,11 @@ impl Gpio {
             return Err(GpioInitializationError::SoundModuleLoaded);
         }
 
-        let mut gpio_registers = GPIORegisters::new(chip);
-        let time_registers = TimeRegisters::new(chip);
-        let pwm_registers = PWMRegisters::new(chip);
-        let mut clk_registers = ClkRegisters::new(chip);
+        let map_err = GpioInitializationError::FailedRegisterMapping;
+        let mut gpio_registers = GPIORegisters::new(chip).map_err(map_err)?;
+        let time_registers = TimeRegisters::new(chip).map_err(map_err)?;
+        let pwm_registers = PWMRegisters::new(chip).map_err(map_err)?;
+        let mut clk_registers = ClkRegisters::new(chip).map_err(map_err)?;
 
         // Drop privileges here as we no longer need root.
         if config.drop_privs {

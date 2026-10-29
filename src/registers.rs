@@ -1,4 +1,4 @@
-use std::{fs, rc::Rc, time};
+use std::{fs, io, rc::Rc, time};
 
 use memmap2::{MmapOptions, MmapRaw};
 
@@ -95,19 +95,17 @@ impl GPIOFunction {
     }
 }
 
-fn mmap_bcm_register(chip: PiChip, offset: u64, size_bytes: usize) -> Rc<MmapRaw> {
+fn mmap_bcm_register(chip: PiChip, offset: u64, size_bytes: usize) -> io::Result<Rc<MmapRaw>> {
     let file = fs::OpenOptions::new()
         .read(true)
         .write(true)
-        .open("/dev/mem")
-        .expect("Failed to open '/dev/mem'");
+        .open("/dev/mem")?;
     let base = chip.get_peripherals_base();
     let map = MmapOptions::new()
         .offset(base + offset)
         .len(size_bytes)
-        .map_raw(&file)
-        .unwrap();
-    Rc::new(map)
+        .map_raw(&file)?;
+    Ok(Rc::new(map))
 }
 
 pub(crate) struct GPIORegisters {
@@ -118,18 +116,18 @@ pub(crate) struct GPIORegisters {
 }
 
 impl GPIORegisters {
-    pub(crate) fn new(chip: PiChip) -> Self {
-        let map = mmap_bcm_register(chip, GP_OFFSET, GP_SIZE_BYTES);
+    pub(crate) fn new(chip: PiChip) -> io::Result<Self> {
+        let map = mmap_bcm_register(chip, GP_OFFSET, GP_SIZE_BYTES)?;
         let clr0 = MmapPtr::new(map.clone(), GP_CLR0);
         let set0 = MmapPtr::new(map.clone(), GP_SET0);
         let lvl0 = MmapPtr::new(map.clone(), GP_LEV0);
         let function_select = GPIOFunctionSelectRegisters::new(map, GP_FSEL0);
-        Self {
+        Ok(Self {
             clr0,
             set0,
             lvl0,
             function_select,
-        }
+        })
     }
 
     pub(crate) fn write_clr_bits(&mut self, value: u32) {
@@ -176,11 +174,11 @@ pub(crate) struct TimeRegisters {
 }
 
 impl TimeRegisters {
-    pub(crate) fn new(chip: PiChip) -> Self {
-        let map = mmap_bcm_register(chip, ST_OFFSET, ST_SIZE_BYTES);
+    pub(crate) fn new(chip: PiChip) -> io::Result<Self> {
+        let map = mmap_bcm_register(chip, ST_OFFSET, ST_SIZE_BYTES)?;
         let low = MmapPtr::new(map.clone(), ST_CLO);
         let high = MmapPtr::new(map, ST_CHI);
-        Self { low, high }
+        Ok(Self { low, high })
     }
 
     #[inline]
@@ -229,18 +227,18 @@ pub(crate) struct PWMRegisters {
 }
 
 impl PWMRegisters {
-    pub(crate) fn new(chip: PiChip) -> Self {
-        let map = mmap_bcm_register(chip, PWM_OFFSET, PWM_SIZE_BYTES);
+    pub(crate) fn new(chip: PiChip) -> io::Result<Self> {
+        let map = mmap_bcm_register(chip, PWM_OFFSET, PWM_SIZE_BYTES)?;
         let ctl = MmapPtr::new(map.clone(), PWM_CTL);
         let rng1 = MmapPtr::new(map.clone(), PWM_RNG1);
         let fif1 = MmapPtr::new(map.clone(), PWM_FIF1);
         let sta = MmapPtr::new(map, PWM_STA);
-        Self {
+        Ok(Self {
             ctl,
             rng1,
             fif1,
             sta,
-        }
+        })
     }
 
     /// Channel 1: Use FIFO | Polarity (1=low, 0=high) | Enable Channel
@@ -306,11 +304,11 @@ pub(crate) struct ClkRegisters {
 }
 
 impl ClkRegisters {
-    pub(crate) fn new(chip: PiChip) -> Self {
-        let map = mmap_bcm_register(chip, CM_OFFSET, CM_SIZE_BYTES);
+    pub(crate) fn new(chip: PiChip) -> io::Result<Self> {
+        let map = mmap_bcm_register(chip, CM_OFFSET, CM_SIZE_BYTES)?;
         let pwm_ctl = MmapPtr::new(map.clone(), CM_PWMCTL);
         let pwm_div = MmapPtr::new(map, CM_PWMDIV);
-        Self { pwm_ctl, pwm_div }
+        Ok(Self { pwm_ctl, pwm_div })
     }
 
     pub(crate) fn init_pwm_divider(&mut self, divider: u32) {

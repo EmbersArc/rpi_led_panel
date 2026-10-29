@@ -1,4 +1,5 @@
 use std::{
+    any::Any,
     error::Error,
     fmt::{Display, Formatter},
     fs::{OpenOptions, write},
@@ -82,6 +83,17 @@ fn initialize_update_thread(chip: PiChip) {
     }
 }
 
+/// The message of a panic payload, which is a `&str` or `String` unless `panic_any` was used.
+fn panic_message(payload: &(dyn Any + Send)) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        String::from(*message)
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        String::from("Unknown panic payload.")
+    }
+}
+
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum MatrixCreationError {
@@ -89,6 +101,7 @@ pub enum MatrixCreationError {
     TooManyParallelChains(usize),
     InvalidDitherBits(usize),
     ThreadTimedOut,
+    ThreadPanicked(String),
     GpioError(GpioInitializationError),
     MemoryAccessError,
     PixelMapperError(String),
@@ -110,6 +123,12 @@ impl Display for MatrixCreationError {
             }
             MatrixCreationError::ThreadTimedOut => {
                 f.write_str("The update thread did not return in time.")
+            }
+            MatrixCreationError::ThreadPanicked(message) => {
+                write!(
+                    f,
+                    "The update thread panicked during initialization: {message}"
+                )
             }
             MatrixCreationError::GpioError(error) => {
                 write!(f, "GPIO initialization error: {error}")
@@ -348,9 +367,19 @@ impl RGBMatrix {
             );
         });
 
-        let enabled_input_bits = thread_start_result_receiver
-            .recv_timeout(Duration::from_secs(10))
-            .map_err(|_| MatrixCreationError::ThreadTimedOut)??;
+        let enabled_input_bits =
+            match thread_start_result_receiver.recv_timeout(Duration::from_secs(10)) {
+                Ok(result) => result?,
+                Err(RecvTimeoutError::Timeout) => return Err(MatrixCreationError::ThreadTimedOut),
+                // The thread only hangs up without sending a result if it panicked.
+                Err(RecvTimeoutError::Disconnected) => {
+                    let message = match thread_handle.join() {
+                        Ok(()) => String::from("The thread stopped without sending a result."),
+                        Err(payload) => panic_message(payload.as_ref()),
+                    };
+                    return Err(MatrixCreationError::ThreadPanicked(message));
+                }
+            };
 
         let rgbmatrix = Self {
             thread_handle: Some(thread_handle),
@@ -489,8 +518,18 @@ impl Drop for RGBMatrix {
 
 #[cfg(test)]
 mod tests {
-    use super::{PixelDesignator, PixelDesignatorMap, PixelMapper, RGBMatrix};
+    use super::{PixelDesignator, PixelDesignatorMap, PixelMapper, RGBMatrix, panic_message};
     use crate::{NamedPixelMapperType, RGBMatrixConfig};
+
+    #[test]
+    fn test_panic_message() {
+        let literal = std::thread::spawn(|| panic!("literal")).join().unwrap_err();
+        assert_eq!(panic_message(literal.as_ref()), "literal");
+        let formatted = std::thread::spawn(|| panic!("formatted {}", 1))
+            .join()
+            .unwrap_err();
+        assert_eq!(panic_message(formatted.as_ref()), "formatted 1");
+    }
 
     #[test]
     fn test_rotate_long_chain() {
