@@ -145,7 +145,7 @@ impl FrameRateMonitor {
 pub(crate) fn sleep_at_most(duration: time::Duration) {
     const MIN_SYS_SLEEP_TIME: time::Duration = time::Duration::from_micros(200);
     if duration > MIN_SYS_SLEEP_TIME {
-        thread::sleep(duration);
+        thread::sleep(duration - MIN_SYS_SLEEP_TIME);
     }
 }
 
