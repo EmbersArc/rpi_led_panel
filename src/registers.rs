@@ -1,6 +1,6 @@
 use std::{fs, rc::Rc, time};
 
-use memmap2::{MmapMut, MmapOptions};
+use memmap2::{MmapOptions, MmapRaw};
 
 use crate::{chip::PiChip, gpio_bits, utils::sleep_at_most};
 
@@ -9,12 +9,12 @@ use crate::{chip::PiChip, gpio_bits, utils::sleep_at_most};
 struct MmapPtr<T> {
     ptr: *mut T,
     /// We need to hold on to the map.
-    _map_ref: Rc<MmapMut>,
+    _map_ref: Rc<MmapRaw>,
 }
 
 impl<T> MmapPtr<T> {
-    fn new(map: Rc<MmapMut>, byte_offset: usize) -> Self {
-        let ptr = unsafe { map.as_ptr().add(byte_offset) as *mut T };
+    fn new(map: Rc<MmapRaw>, byte_offset: usize) -> Self {
+        let ptr = unsafe { map.as_mut_ptr().add(byte_offset).cast::<T>() };
         Self { ptr, _map_ref: map }
     }
 
@@ -42,7 +42,7 @@ struct GPIOFunctionSelectRegisters {
 }
 
 impl GPIOFunctionSelectRegisters {
-    fn new(map: Rc<MmapMut>, byte_offset: usize) -> Self {
+    fn new(map: Rc<MmapRaw>, byte_offset: usize) -> Self {
         let registers_by_function = [
             MmapPtr::new(map.clone(), byte_offset),
             MmapPtr::new(map.clone(), byte_offset + 4),
@@ -95,20 +95,18 @@ impl GPIOFunction {
     }
 }
 
-pub fn mmap_bcm_register(chip: PiChip, offset: u64, size_bytes: usize) -> Rc<MmapMut> {
+fn mmap_bcm_register(chip: PiChip, offset: u64, size_bytes: usize) -> Rc<MmapRaw> {
     let file = fs::OpenOptions::new()
         .read(true)
         .write(true)
         .open("/dev/mem")
         .expect("Failed to open '/dev/mem'");
     let base = chip.get_peripherals_base();
-    let map = unsafe {
-        MmapOptions::new()
-            .offset(base + offset)
-            .len(size_bytes)
-            .map_mut(&file)
-            .unwrap()
-    };
+    let map = MmapOptions::new()
+        .offset(base + offset)
+        .len(size_bytes)
+        .map_raw(&file)
+        .unwrap();
     Rc::new(map)
 }
 
