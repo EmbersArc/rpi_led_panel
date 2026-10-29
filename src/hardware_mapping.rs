@@ -260,10 +260,10 @@ impl HardwareMapping {
             panels: Panels {
                 color_bits: [
                     ColorBits {
+                        r1: gpio_bits!(11), // masks: SPI0_SCKL
                         // On Pi1 Rev1, the pin other Pis have GPIO27, these have GPIO21. So make this work for
                         // both Rev1 and Rev2.
-                        r1: gpio_bits!(15, 27),
-                        g1: gpio_bits!(21),
+                        g1: gpio_bits!(21, 27),
                         b1: gpio_bits!(7),  // masks: SPI0_CE1
                         r2: gpio_bits!(8),  // masks: SPI0_CE0
                         g2: gpio_bits!(9),  // masks: SPI0_MISO
@@ -362,6 +362,34 @@ impl HardwareMapping {
                     ColorBits::unused(),
                 ],
             },
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::HardwareMapping;
+
+    #[test]
+    fn test_signals_use_distinct_pins() {
+        for (name, h) in [
+            ("Regular", HardwareMapping::regular()),
+            ("RegularPi1", HardwareMapping::regular_pi1()),
+            ("AdafruitHat", HardwareMapping::adafruit_hat()),
+            ("AdafruitHatPwm", HardwareMapping::adafruit_hat_pwm()),
+            ("Classic", HardwareMapping::classic()),
+            ("ClassicPi1", HardwareMapping::classic_pi1()),
+        ] {
+            let mut signals = vec![h.output_enable, h.clock, h.strobe, h.a, h.b, h.c, h.d, h.e];
+            for c in h.panels.color_bits {
+                signals.extend([c.r1, c.g1, c.b1, c.r2, c.g2, c.b2]);
+            }
+            // A signal can drive several pins, but no pin may be driven by two signals.
+            let mut used_bits = 0;
+            for bits in signals {
+                assert_eq!(used_bits & bits, 0, "{name} uses a pin twice");
+                used_bits |= bits;
+            }
         }
     }
 }

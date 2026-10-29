@@ -11,7 +11,7 @@
 - Halve the memory used by the pixel mapping.
 - Wake up early from sleeps and busy wait the rest to avoid overshooting.
 - Faster `fill_solid` for embedded-graphics, which is used for filled rectangles.
-- Fix the `AdafruitHat`, `Classic` and `ClassicPi1` hardware mappings by timing their pulses in sofware.
+- Fix the `AdafruitHat`, `Classic` and `ClassicPi1` hardware mappings by timing their pulses in software.
 - **Breaking:** Move `set_brightness` and `set_pwm_bits` from `Canvas` to `RGBMatrix`. On the canvas they only applied to every other frame.
 - Export the `MatrixCreationError`, `GpioInitializationError` and `InvalidVariantError` error types.
 - Fix the checks for loaded kernel modules and isolated CPUs, which could match the wrong module or CPU.
@@ -28,6 +28,7 @@
 - **Breaking:** `receive_new_inputs` returns an `UpdateThreadError` instead of `None` when the update thread shuts down unexpectedly.
 - **Breaking:** Turn the CLI `interlaced` argument into a switch.
 - **Breaking:** Replace the `drop_privs` option with the `no_drop_privs` switch.
+- Fix the `RegularPi1` hardware mapping, which put the top red channel on the `E` address line instead of GPIO 11.
 - Report warnings and suggestions through the `log` crate instead of printing them to stderr.
 - Changed many error types and added more information to them.
 
