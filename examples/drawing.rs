@@ -16,7 +16,7 @@ fn main() {
     let rows = config.rows as i32;
     let cols = config.cols as i32;
 
-    let (mut matrix, mut canvas) = RGBMatrix::new(config, 0).expect("Matrix initialization failed");
+    let (mut matrix, mut canvas) = RGBMatrix::new(config).expect("Matrix initialization failed");
 
     let circle = {
         let thin_stroke = PrimitiveStyle::with_stroke(Rgb888::CSS_GRAY, 1);

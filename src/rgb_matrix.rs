@@ -196,17 +196,14 @@ impl RGBMatrix {
     /// Create a new RGB matrix controller. This starts a new thread to update the matrix. Returns the
     /// controller and a canvas for drawing.
     ///
-    /// You can additionally request user readable GPIO bits which can later be received with
-    /// [`RGBMatrix::receive_new_inputs`]. Only bits that are not already in use for reading or writing by the
-    /// matrix are allowed. Use [`RGBMatrix::enabled_input_bits`] after calling this function to check which
-    /// bits were actually available.
+    /// You can additionally request user readable GPIO bits with [`RGBMatrixConfig::input_bits`], which can
+    /// later be received with [`RGBMatrix::receive_new_inputs`]. Only bits that are not already in use for
+    /// reading or writing by the matrix are allowed. Use [`RGBMatrix::enabled_input_bits`] after calling this
+    /// function to check which bits were actually available.
     ///
     /// Note: If privilege dropping is enabled in the config, then calling this function will have the side
     /// effect of dropping the application's privileges down to the configured user/group.
-    pub fn new(
-        mut config: RGBMatrixConfig,
-        requested_inputs: u32,
-    ) -> Result<(Self, Canvas), MatrixCreationError> {
+    pub fn new(mut config: RGBMatrixConfig) -> Result<(Self, Canvas), MatrixCreationError> {
         let shared_mapper = Self::create_pixel_map(&mut config)?;
 
         // Check if we can access the memory before setting up the hardware.
@@ -274,7 +271,7 @@ impl RGBMatrix {
                 .hardware_mapping
                 .get_color_clock_mask(config.parallel);
 
-            let enabled_input_bits = gpio.request_enabled_inputs(requested_inputs);
+            let enabled_input_bits = gpio.request_enabled_inputs(config.input_bits);
             // The main thread stopped waiting and returned an error, so nobody will use the matrix.
             if thread_start_result_sender
                 .send(Ok(enabled_input_bits))
@@ -537,7 +534,7 @@ impl RGBMatrix {
         self.enabled_input_bits
     }
 
-    /// Tries to receive a new GPIO input as requested with the `requested_inputs` argument of [`RGBMatrix::new`].
+    /// Tries to receive a new GPIO input as requested with [`RGBMatrixConfig::input_bits`].
     /// Returns `None` if the inputs didn't change before the timeout.
     pub fn receive_new_inputs(
         &mut self,

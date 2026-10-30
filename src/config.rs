@@ -108,6 +108,10 @@ pub struct RGBMatrixConfig {
     /// brightness in percent. Default: 100
     #[argh(option, default = "100")]
     pub led_brightness: u8,
+    /// GPIO pins to read as inputs, as a decimal bitmask in which bit n stands for GPIO n. Pins that the
+    /// matrix uses itself are skipped. Default: 0
+    #[argh(option, default = "0")]
+    pub input_bits: u32,
     /// keep running as root instead of dropping privileges after initialization
     #[argh(switch)]
     pub no_drop_privs: bool,
@@ -223,6 +227,7 @@ impl Default for RGBMatrixConfig {
             row_setter: RowAddressSetterType::Direct,
             led_sequence: LedSequence::Rgb,
             led_brightness: 100,
+            input_bits: 0,
             no_drop_privs: false,
             drop_priv_user: String::from("daemon"),
             drop_priv_group: String::from("daemon"),
