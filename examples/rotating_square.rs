@@ -61,7 +61,7 @@ fn main() {
             .expect("The display update thread stopped");
 
         if step % 120 == 0 {
-            print!("\r{:>100}\rFramerate: {}", "", matrix.get_framerate());
+            print!("\r{:>100}\rFramerate: {}", "", matrix.framerate());
             std::io::stdout().flush().unwrap();
         }
     }

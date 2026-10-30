@@ -549,7 +549,7 @@ impl RGBMatrix {
 
     /// Get the average frame rate over the last 60 frames.
     #[must_use]
-    pub fn get_framerate(&self) -> usize {
+    pub fn framerate(&self) -> usize {
         self.framerate.load(Ordering::Relaxed) as usize
     }
 }
