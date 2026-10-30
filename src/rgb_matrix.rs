@@ -590,6 +590,7 @@ mod tests {
     };
     use crate::{
         GpioInitializationError, MultiplexMapperType, NamedPixelMapperType, RGBMatrixConfig,
+        Rotation,
     };
 
     #[test]
@@ -670,7 +671,11 @@ mod tests {
         };
         let pixel_designator = PixelDesignator::new(&config.hardware_mapping, config.led_sequence);
         let map = PixelDesignatorMap::new(pixel_designator, 256, 32, &config);
-        let mapper = PixelMapper::Named(NamedPixelMapperType::Rotate(90).create(4, 1).unwrap());
+        let mapper = PixelMapper::Named(
+            NamedPixelMapperType::Rotate(Rotation::Deg90)
+                .create(4, 1)
+                .unwrap(),
+        );
 
         let rotated = RGBMatrix::apply_pixel_mapper(&map, &mapper, pixel_designator).unwrap();
 

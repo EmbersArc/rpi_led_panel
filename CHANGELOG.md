@@ -16,6 +16,7 @@
 - Implement `fill_solid` for embedded-graphics to speed up filled rectangles.
 - Report warnings and suggestions through the `log` crate instead of printing them to stderr. A logger such as `env_logger` is needed to see them.
 - Add more detail to error messages and implement `Error::source` for errors caused by I/O failures.
+- Accept negative angles for the `Rotate` pixel mapper, e.g. `Rotate:-90`.
 - Declare 1.87 as the minimum supported Rust version.
 - Updated dependencies.
 
@@ -41,6 +42,7 @@
 - `update_on_vsync` returns a `Result` with an `UpdateThreadError` instead of panicking when the update thread shuts down unexpectedly.
 - `receive_new_inputs` returns a `Result<Option<u32>, UpdateThreadError>`. An unexpected shutdown of the update thread is now an error instead of `None`.
 - Move `set_brightness` and `set_pwm_bits` from `Canvas` to `RGBMatrix`. On the canvas they only applied to every other frame.
+- `NamedPixelMapperType::Mirror` takes a `MirrorDirection` instead of a `bool`, and `NamedPixelMapperType::Rotate` takes a `Rotation` instead of a `usize`, so an invalid angle can no longer cause a panic.
 - Turn the CLI `interlaced` argument into a switch.
 - Replace the `drop_privs` option with the `no_drop_privs` switch.
 - `led_brightness` outside of 1 to 100 is now an error instead of being clamped, and `pwm_lsb_nanoseconds` has to be from 4 to 10000.

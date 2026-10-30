@@ -23,7 +23,7 @@ pub use gpio::GpioInitializationError;
 pub use hardware_mapping::HardwareMapping;
 pub use init_sequence::PanelType;
 pub use multiplex_mapper::MultiplexMapperType;
-pub use named_pixel_mapper::NamedPixelMapperType;
+pub use named_pixel_mapper::{MirrorDirection, NamedPixelMapperType, Rotation};
 pub use rgb_matrix::{MatrixCreationError, RGBMatrix, UpdateThreadError};
 pub use row_address_setter::RowAddressSetterType;
 
