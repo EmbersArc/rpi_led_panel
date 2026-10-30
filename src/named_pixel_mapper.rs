@@ -1,6 +1,6 @@
-use std::{error::Error, str::FromStr};
+use std::str::FromStr;
 
-use crate::rgb_matrix::MatrixCreationError;
+use crate::{error::InvalidPixelMapperError, rgb_matrix::MatrixCreationError};
 
 /// The direction in which [`NamedPixelMapperType::Mirror`] flips the display.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -91,7 +91,7 @@ pub enum NamedPixelMapperType {
 }
 
 impl FromStr for NamedPixelMapperType {
-    type Err = Box<dyn Error>;
+    type Err = InvalidPixelMapperError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Some((command, param)) = s.split_once(':') {
@@ -99,34 +99,38 @@ impl FromStr for NamedPixelMapperType {
                 "Mirror" => match param {
                     "H" | "h" => Ok(Self::Mirror(MirrorDirection::Horizontal)),
                     "V" | "v" => Ok(Self::Mirror(MirrorDirection::Vertical)),
-                    other => Err(format!(
+                    other => Err(InvalidPixelMapperError::new(format!(
                         "'{other}' is not valid. Mirror parameter should be either 'V' or 'H'"
-                    )
-                    .into()),
+                    ))),
                 },
                 "Rotate" => {
                     let Ok(angle) = param.parse::<i32>() else {
-                        return Err("Rotation angle is missing or invalid".into());
+                        return Err(InvalidPixelMapperError::new(
+                            "Rotation angle is missing or invalid",
+                        ));
                     };
                     match angle.rem_euclid(360) {
                         0 => Ok(Self::Rotate(Rotation::Deg0)),
                         90 => Ok(Self::Rotate(Rotation::Deg90)),
                         180 => Ok(Self::Rotate(Rotation::Deg180)),
                         270 => Ok(Self::Rotate(Rotation::Deg270)),
-                        _ => Err(format!(
+                        _ => Err(InvalidPixelMapperError::new(format!(
                             "'{angle}' is not valid. Rotation needs to be a multiple of 90 degrees"
-                        )
-                        .into()),
+                        ))),
                     }
                 }
-                other => Err(format!("'{other}' is not a valid Pixel mapping.").into()),
+                other => Err(InvalidPixelMapperError::new(format!(
+                    "'{other}' is not a valid Pixel mapping."
+                ))),
             }
         } else if s == "U-mapper" {
             Ok(Self::UMapper)
         } else if s == "ChainLink" {
             Ok(Self::ChainLink)
         } else {
-            Err(format!("'{s}' is not a valid Pixel mapping.").into())
+            Err(InvalidPixelMapperError::new(format!(
+                "'{s}' is not a valid Pixel mapping."
+            )))
         }
     }
 }

@@ -1,6 +1,6 @@
 use crate::error::InvalidVariantError;
 
-use std::{error::Error, ops::BitOr, str::FromStr};
+use std::{ops::BitOr, str::FromStr};
 
 use crate::gpio_bits;
 
@@ -93,7 +93,7 @@ pub struct HardwareMapping {
 }
 
 impl FromStr for HardwareMapping {
-    type Err = Box<dyn Error>;
+    type Err = InvalidVariantError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         #[derive(strum::EnumString, strum::VariantNames)]

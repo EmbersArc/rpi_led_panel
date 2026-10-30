@@ -47,7 +47,7 @@ mod utils;
 pub use canvas::{Canvas, LedSequence};
 pub use chip::PiChip;
 pub use config::RGBMatrixConfig;
-pub use error::InvalidVariantError;
+pub use error::{InvalidPixelMapperError, InvalidVariantError};
 pub use gpio::GpioInitializationError;
 pub use hardware_mapping::HardwareMapping;
 pub use init_sequence::PanelType;
