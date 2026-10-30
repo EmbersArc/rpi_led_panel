@@ -2,35 +2,48 @@
 
 ## Unreleased
 
-- Add `RGBMatrix::suspend` to blank the display and pause the update thread until the next `update_on_vsync`.
+### Added
+
+- Add `RGBMatrix::suspend`/`RGBMatrix::is_suspended` to clear the display and pause the update thread until the next `update_on_vsync`.
 - Add the `min_sys_sleep_microseconds` option to tune how early sleeps wake up.
-- Fix SIGBUS on aarch64: Read the system timer as two 32-bit registers. [#28](https://github.com/EmbersArc/rpi_led_panel/pull/28)
-- Fix automatic chip detection on various kernels.
-- Run the display update thread with realtime (`SCHED_FIFO`) scheduling.
-- Share the color lookup table and pixel mapping between canvases instead of copying them.
-- Halve the memory used by the pixel mapping.
+- Export the `MatrixCreationError`, `GpioInitializationError`, `UpdateThreadError` and `InvalidVariantError` error types. `MatrixCreationError` and `GpioInitializationError` are `#[non_exhaustive]`.
+
+### Changed
+
+- Run the display update thread with realtime (`SCHED_FIFO`) scheduling if possible.
 - Wake up early from sleeps and busy wait the rest to avoid overshooting.
-- Faster `fill_solid` for embedded-graphics, which is used for filled rectangles.
-- Fix the `AdafruitHat`, `Classic` and `ClassicPi1` hardware mappings by timing their pulses in software.
-- **Breaking:** Move `set_brightness` and `set_pwm_bits` from `Canvas` to `RGBMatrix`. On the canvas they only applied to every other frame.
-- Export the `MatrixCreationError`, `GpioInitializationError` and `InvalidVariantError` error types.
-- Fix the checks for loaded kernel modules and isolated CPUs, which could match the wrong module or CPU.
-- Rotating a long chain no longer panics.
-- Report failures of the update thread during initialization instead of a timeout, and return an error instead of panicking when the registers can't be mapped.
-- Validate the configuration up front instead of panicking on values like `rows > 64`, `parallel = 0` or `refresh_rate = 0`.
+- Reduce memory use by sharing the color lookup table and pixel mapping between canvases and halving the size of the pixel mapping.
+- Implement `fill_solid` for embedded-graphics to speed up filled rectangles.
+- Report warnings and suggestions through the `log` crate instead of printing them to stderr. A logger such as `env_logger` is needed to see them.
+- Add more detail to error messages and implement `Error::source` for errors caused by I/O failures.
+- Declare 1.87 as the minimum supported Rust version.
+- Updated dependencies.
+
+### Fixed
+
+- Fix a SIGBUS on aarch64 by reading the system timer as two 32-bit registers. [#28](https://github.com/EmbersArc/rpi_led_panel/pull/28)
+- Fix automatic chip detection on mainline kernels and for old-style revision codes with the warranty bit set.
+- Fix the `AdafruitHat`, `Classic` and `ClassicPi1` hardware mappings, which failed on startup. They now time their pulses in software, so the sound module can stay loaded.
+- Fix the `RegularPi1` hardware mapping, which put the top red channel on GPIO 15 (the `E` address line) and 27 instead of 11, and the top green channel only on GPIO 21.
 - Fix the `FM6126` and `FM6127` panel initialization, which shifted the register values in reversed bit order and only reached the first panel of a chain.
-- Fix the `P8Outdoor1R1G1B` multiplex mapper.
-- Fix a panic in interlaced mode when the number of rows is not a multiple of 4.
 - Fix the `ABCShiftRegister` row address setter, which didn't invert the data and clock.
-- **Breaking:** `update_on_vsync` and `suspend` return an `UpdateThreadError` with the reason instead of panicking when the update thread shuts down unexpectedly.
-- Reject panel sizes that a multiplex mapper doesn't support.
+- Fix the `P8Outdoor1R1G1B` multiplex mapper.
 - Fix the `U-mapper` pixel mapper for chains that aren't a multiple of 64 pixels wide.
-- **Breaking:** `receive_new_inputs` returns an `UpdateThreadError` instead of `None` when the update thread shuts down unexpectedly.
-- **Breaking:** Turn the CLI `interlaced` argument into a switch.
-- **Breaking:** Replace the `drop_privs` option with the `no_drop_privs` switch.
-- Fix the `RegularPi1` hardware mapping, which put the top red channel on the `E` address line instead of GPIO 11.
-- Report warnings and suggestions through the `log` crate instead of printing them to stderr.
-- Changed many error types and added more information to them.
+- Fix a panic when rotating a long chain.
+- Fix a panic in interlaced mode when the number of rows is not a multiple of 4.
+- Fix the checks for loaded kernel modules and isolated CPUs, which could match the wrong module or CPU.
+- Report panics of the update thread during initialization instead of a timeout.
+- Return an error instead of panicking when the registers can't be mapped.
+- Validate the configuration up front instead of panicking on values like `rows > 64`, `parallel = 0` or `refresh_rate = 0`, and reject panel sizes that a multiplex mapper doesn't support.
+
+### Breaking
+
+- `update_on_vsync` returns a `Result` with an `UpdateThreadError` instead of panicking when the update thread shuts down unexpectedly.
+- `receive_new_inputs` returns a `Result<Option<u32>, UpdateThreadError>`. An unexpected shutdown of the update thread is now an error instead of `None`.
+- Move `set_brightness` and `set_pwm_bits` from `Canvas` to `RGBMatrix`. On the canvas they only applied to every other frame.
+- Turn the CLI `interlaced` argument into a switch.
+- Replace the `drop_privs` option with the `no_drop_privs` switch.
+- `led_brightness` outside of 1 to 100 is now an error instead of being clamped, and `pwm_lsb_nanoseconds` has to be from 4 to 10000.
 
 ## Version 0.9.1
 
