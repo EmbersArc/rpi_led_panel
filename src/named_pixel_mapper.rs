@@ -29,6 +29,7 @@ pub enum Rotation {
 /// For example, to first mirror the panels horizontally and then rotate the resulting screen,
 /// You can use `--pixelmapper Mirror:H --pixelmapper Rotate:90`
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum NamedPixelMapperType {
     /// The "Mirror" mapper allows you to mirror the output either horizontally or vertically.
     /// Specify 'H' for horizontal mirroring or 'V' for vertical mirroring as a parameter after a colon.

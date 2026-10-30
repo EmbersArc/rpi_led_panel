@@ -5,6 +5,7 @@ use crate::{RGBMatrixConfig, error::InvalidVariantError, gpio::Gpio};
     parse_err_fn = InvalidVariantError::new::<Self>,
     parse_err_ty = InvalidVariantError
 )]
+#[non_exhaustive]
 pub enum RowAddressSetterType {
     Direct,
     ShiftRegister,

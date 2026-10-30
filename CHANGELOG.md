@@ -43,6 +43,7 @@
 - `receive_new_inputs` returns a `Result<Option<u32>, UpdateThreadError>`. An unexpected shutdown of the update thread is now an error instead of `None`.
 - Move `set_brightness` and `set_pwm_bits` from `Canvas` to `RGBMatrix`. On the canvas they only applied to every other frame.
 - `RGBMatrix::new` and `RGBMatrix::update_on_vsync` use `Canvas` instead of `Box<Canvas>`, so `canvas.as_mut()` becomes `&mut canvas` when drawing.
+- `PanelType`, `MultiplexMapperType`, `RowAddressSetterType`, `NamedPixelMapperType` and `PiChip` are `#[non_exhaustive]`, so `match` expressions on them need a wildcard arm.
 - `NamedPixelMapperType::Mirror` takes a `MirrorDirection` instead of a `bool`, and `NamedPixelMapperType::Rotate` takes a `Rotation` instead of a `usize`, so an invalid angle can no longer cause a panic.
 - Turn the CLI `interlaced` argument into a switch.
 - Replace the `drop_privs` option with the `no_drop_privs` switch.

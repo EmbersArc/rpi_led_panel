@@ -7,6 +7,7 @@ use crate::error::InvalidVariantError;
     parse_err_fn = InvalidVariantError::new::<Self>,
     parse_err_ty = InvalidVariantError
 )]
+#[non_exhaustive]
 pub enum PiChip {
     /// Model 0 and 1
     #[strum(serialize = "BCM2708", serialize = "BCM2835")]
