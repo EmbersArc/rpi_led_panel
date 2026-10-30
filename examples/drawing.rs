@@ -47,12 +47,12 @@ fn main() {
     );
 
     for step in 0..=u64::MAX {
-        circle.draw(canvas.as_mut()).unwrap();
+        circle.draw(&mut canvas).unwrap();
         [diagonal1, diagonal2, top, bottom, left, right]
             .iter()
-            .for_each(|line| line.draw(canvas.as_mut()).unwrap());
+            .for_each(|line| line.draw(&mut canvas).unwrap());
         if (step / 100) % 2 == 0 {
-            text.draw(canvas.as_mut()).unwrap();
+            text.draw(&mut canvas).unwrap();
         }
         canvas = matrix
             .update_on_vsync(canvas)

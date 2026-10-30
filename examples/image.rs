@@ -28,7 +28,7 @@ fn main() {
     );
 
     for step in 0..=u64::MAX {
-        image.draw(canvas.as_mut()).unwrap();
+        image.draw(&mut canvas).unwrap();
         canvas = matrix
             .update_on_vsync(canvas)
             .expect("The display update thread stopped");

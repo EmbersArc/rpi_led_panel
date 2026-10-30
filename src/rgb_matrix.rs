@@ -32,7 +32,7 @@ const SUSPENDED_INPUT_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 /// Messages sent from the main thread to the display update thread.
 enum ThreadMessage {
-    Canvas(Box<Canvas>),
+    Canvas(Canvas),
     Suspend,
     Shutdown,
 }
@@ -179,7 +179,7 @@ pub struct RGBMatrix {
     /// Channel to send canvases and control messages to the update thread.
     message_sender: SyncSender<ThreadMessage>,
     /// Channel to receive canvas from update thread.
-    canvas_from_thread_receiver: Receiver<Box<Canvas>>,
+    canvas_from_thread_receiver: Receiver<Canvas>,
     /// Additional requested inputs that can be received.
     enabled_input_bits: u32,
     /// Frame rate measurement.
@@ -206,7 +206,7 @@ impl RGBMatrix {
     pub fn new(
         mut config: RGBMatrixConfig,
         requested_inputs: u32,
-    ) -> Result<(Self, Box<Canvas>), MatrixCreationError> {
+    ) -> Result<(Self, Canvas), MatrixCreationError> {
         let shared_mapper = Self::create_pixel_map(&mut config)?;
 
         // Check if we can access the memory before setting up the hardware.
@@ -230,12 +230,11 @@ impl RGBMatrix {
 
         // Create two canvases, one for the display update thread and one for the user to modify. They will be
         // swapped out after each frame.
-        let canvas = Box::new(Canvas::new(&config, shared_mapper));
+        let canvas = Canvas::new(&config, shared_mapper);
         let mut thread_canvas = canvas.clone();
 
         let (message_sender, message_receiver) = sync_channel::<ThreadMessage>(0);
-        let (canvas_from_thread_sender, canvas_from_thread_receiver) =
-            sync_channel::<Box<Canvas>>(1);
+        let (canvas_from_thread_sender, canvas_from_thread_receiver) = sync_channel::<Canvas>(1);
         let (input_sender, input_receiver) = channel::<u32>();
         let (thread_start_result_sender, thread_start_result_receiver) =
             channel::<Result<u32, MatrixCreationError>>();
@@ -470,10 +469,7 @@ impl RGBMatrix {
     /// frame is drawn again.
     ///
     /// If the display is suspended, this resumes it and returns immediately.
-    pub fn update_on_vsync(
-        &mut self,
-        canvas: Box<Canvas>,
-    ) -> Result<Box<Canvas>, UpdateThreadError> {
+    pub fn update_on_vsync(&mut self, canvas: Canvas) -> Result<Canvas, UpdateThreadError> {
         self.message_sender
             .send(ThreadMessage::Canvas(canvas))
             .map_err(|_| self.update_thread_error())?;
