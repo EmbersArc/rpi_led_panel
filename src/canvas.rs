@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::{
+    fmt::{Debug, Formatter},
+    sync::Arc,
+};
 
 use crate::{
     RGBMatrixConfig, color::ColorLookup, config::K_BIT_PLANES, error::InvalidVariantError,
@@ -12,6 +15,8 @@ pub(crate) enum Channel {
     Third,
 }
 
+/// The data lines that the red, green and blue channels of a pixel are sent to, in this order. Panels that swap
+/// their colors need something other than the default of [`LedSequence::Rgb`].
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, strum::EnumString, strum::VariantNames,
 )]
@@ -21,12 +26,18 @@ pub(crate) enum Channel {
     parse_err_ty = InvalidVariantError
 )]
 pub enum LedSequence {
+    /// Red on R, green on G and blue on B.
     #[default]
     Rgb,
+    /// Red on R, green on B and blue on G.
     Rbg,
+    /// Red on G, green on R and blue on B.
     Grb,
+    /// Red on G, green on B and blue on R.
     Gbr,
+    /// Red on B, green on R and blue on G.
     Brg,
+    /// Red on B, green on G and blue on R.
     Bgr,
 }
 
@@ -177,6 +188,9 @@ impl PixelDesignatorMap {
     }
 }
 
+/// A frame to draw on, which is shown by passing it to [`RGBMatrix::update_on_vsync`].
+///
+/// [`RGBMatrix::update_on_vsync`]: crate::RGBMatrix::update_on_vsync
 #[derive(Clone)]
 pub struct Canvas {
     cols: usize,
@@ -187,6 +201,17 @@ pub struct Canvas {
     brightness: u8,
     color_lookup: &'static ColorLookup,
     interlaced: bool,
+}
+
+impl Debug for Canvas {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Canvas")
+            .field("width", &self.width())
+            .field("height", &self.height())
+            .field("pwm_bits", &self.pwm_bits)
+            .field("brightness", &self.brightness)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Canvas {
@@ -206,11 +231,13 @@ impl Canvas {
         }
     }
 
+    /// The height in pixels. Multiple panels and pixel mappers can make this differ from the configured rows.
     #[must_use]
     pub fn height(&self) -> usize {
         self.shared_mapper.height
     }
 
+    /// The width in pixels. Multiple panels and pixel mappers can make this differ from the configured columns.
     #[must_use]
     pub fn width(&self) -> usize {
         self.shared_mapper.width
@@ -230,6 +257,7 @@ impl Canvas {
         &mut self.bitplane_buffer[start..start + self.cols]
     }
 
+    /// Set the color of a pixel. Pixels outside of the canvas are ignored.
     pub fn set_pixel(&mut self, x: usize, y: usize, r: u8, g: u8, b: u8) {
         if x >= self.width() || y >= self.height() {
             return;
@@ -256,6 +284,7 @@ impl Canvas {
         });
     }
 
+    /// Set every pixel to the same color.
     pub fn fill(&mut self, r: u8, g: u8, b: u8) {
         let designator = self.shared_mapper.get_pixel_designator();
 

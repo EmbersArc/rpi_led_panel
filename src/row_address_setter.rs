@@ -1,5 +1,6 @@
 use crate::{RGBMatrixConfig, error::InvalidVariantError, gpio::Gpio};
 
+/// How a panel selects the row to show.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumString, strum::VariantNames)]
 #[strum(
     parse_err_fn = InvalidVariantError::new::<Self>,
@@ -7,10 +8,15 @@ use crate::{RGBMatrixConfig, error::InvalidVariantError, gpio::Gpio};
 )]
 #[non_exhaustive]
 pub enum RowAddressSetterType {
+    /// The row address is set directly on the lines A to E.
     Direct,
+    /// A shift register with line A as the clock and line B as the data.
     ShiftRegister,
+    /// Panels with 4 row addresses, where one of the lines A to D goes low to select its row.
     DirectABCDLine,
+    /// Like [`ShiftRegister`](Self::ShiftRegister), with line C as the data and inverted data and clock.
     ABCShiftRegister,
+    /// SM5266 shifters that are set through the lines A to C, with the lines D and E selecting the active shifter.
     SM5266,
 }
 

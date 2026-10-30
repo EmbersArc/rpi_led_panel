@@ -28,7 +28,7 @@ const MAX_DITHER_BITS: usize = 2;
 pub(crate) const K_BIT_PLANES: usize = 11;
 
 /// Configuration for an RGB matrix panel controller.
-#[derive(FromArgs, Debug, PartialEq, Eq, Hash)]
+#[derive(FromArgs, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RGBMatrixConfig {
     /// the display wiring e.g. "Regular", "AdafruitHat", "AdafruitHatPwm", etc. Default: "Regular"
     #[argh(option, default = "HardwareMapping::regular()")]
@@ -77,7 +77,7 @@ pub struct RGBMatrixConfig {
     pub interlaced: bool,
     /// the lower bits can be time dithered, i.e. their brightness contribution is achieved by only showing
     /// them some frames (this is possible, because the PWM is implemented as binary code modulation). This
-    /// will allow higher refresh rate (or same refresh rate with increased --pwm_lsb_nanoseconds). The
+    /// will allow higher refresh rate (or same refresh rate with increased --pwm-lsb-nanoseconds). The
     /// disadvantage could be slightly lower brightness, in particular for longer chains, and higher CPU use.
     /// CPU use is not of concern for Raspberry Pi 2, 3 and 4 (as we run on a dedicated core anyway) but
     /// probably for Raspberry Pi 1 or Pi Zero. Default: 0 (no dithering)

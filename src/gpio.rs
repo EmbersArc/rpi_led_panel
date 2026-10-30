@@ -16,12 +16,17 @@ use crate::{
     utils::{drop_privs, linux_has_module_loaded, sleep_exactly},
 };
 
+/// An error while setting up the GPIO pins.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum GpioInitializationError {
+    /// The one-wire kernel module is loaded, which conflicts with a hardware mapping that uses GPIO 4.
     OneWireProtocolEnabled,
+    /// The sound module is loaded, which conflicts with the PWM peripheral used for hardware pulsing.
     SoundModuleLoaded,
+    /// Privileges could not be dropped, for the given reason.
     FailedPrivilegeDrop(String),
+    /// The peripheral registers could not be mapped from `/dev/mem`.
     FailedRegisterMapping(io::Error),
 }
 

@@ -30,6 +30,12 @@ impl Display for PanelDimension {
     }
 }
 
+/// The wiring of panels that use fewer row addresses than a regular panel of their size, which is common for
+/// outdoor panels. They are driven like a wider and lower panel, and the mapper arranges the pixels so that the
+/// canvas still has the size of the panel. Regular panels don't need a mapper.
+///
+/// `rows` and `cols` of the config are the physical size of a panel. Each mapper only works for some sizes, and
+/// [`RGBMatrix::new`](crate::RGBMatrix::new) returns an error for the others.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumString, strum::VariantNames)]
 #[strum(
     parse_err_fn = InvalidVariantError::new::<Self>,
@@ -37,23 +43,51 @@ impl Display for PanelDimension {
 )]
 #[non_exhaustive]
 pub enum MultiplexMapperType {
+    /// Uses half of the row addresses. Stripes of `rows / 4` rows are grouped in pairs, and the data of the upper
+    /// stripe comes after the data of the lower stripe.
     Stripe,
+    /// Uses half of the row addresses. Like [`Stripe`](Self::Stripe), with the stripes split at half of the panel
+    /// width into a checkerboard.
     Checkered,
+    /// Uses half of the row addresses. In each quarter of the panel width, the data runs backwards through the
+    /// upper stripe and then forwards through the lower one. `cols` needs to be a multiple of 4.
     Spiral,
+    /// Uses half of the row addresses, with tiles of 8x4 pixels in a Z pattern. The odd rows of tiles have an offset
+    /// of 8. `rows` and `cols` need to be multiples of 8.
     ZStripe08,
+    /// Like [`ZStripe08`](Self::ZStripe08), with an offset of 4 for all rows of tiles. `cols` only needs to be a
+    /// multiple of 4.
     ZStripe44,
+    /// Like [`ZStripe08`](Self::ZStripe08), with an offset of 8 for the even rows of tiles.
     ZStripe80,
+    /// Uses half of the row addresses. `rows` needs to be 32 and `cols` a multiple of 2.
     Coreman,
+    /// Uses a quarter of the row addresses, with blocks of 8 columns. `cols` needs to be 32.
     Kaler2Scan,
+    /// P10 panels of 32x16 pixels that are driven like a 128x4 panel in a Z pattern. `rows` needs to be 16 and `cols`
+    /// 32.
     P10Z,
+    /// Uses half of the row addresses, with blocks of 5 rows and 4 columns. `rows` needs to be 20 and `cols` a
+    /// multiple of 4.
     QiangLiQ8,
+    /// Like [`ZStripe08`](Self::ZStripe08), but the even rows of tiles run backwards through the second half of the
+    /// data.
     InversedZStripe,
+    /// P10 outdoor panels that use half of the row addresses, with tiles of 8x4 pixels that all run backwards. `rows`
+    /// and `cols` need to be multiples of 8.
     P10Outdoor1R1G1B1,
+    /// Like [`P10Outdoor1R1G1B1`](Self::P10Outdoor1R1G1B1), but only the even rows of tiles run backwards.
     P10Outdoor1R1G1B2,
+    /// Like [`P10Outdoor1R1G1B1`](Self::P10Outdoor1R1G1B1), but only the odd rows of tiles run backwards.
     P10Outdoor1R1G1B3,
+    /// P10 panels that use a quarter of the row addresses. `cols` needs to be 32.
     P10Coreman,
+    /// P8 outdoor panels that use half of the row addresses, with tiles of 8x5 pixels. `rows` needs to be 20 and
+    /// `cols` 40.
     P8Outdoor1R1G1B,
+    /// Like [`Stripe`](Self::Stripe), with the data of the lower stripe after the data of the upper stripe.
     FlippedStripe,
+    /// P10 outdoor panels that use a quarter of the row addresses. `rows` needs to be 16 and `cols` a multiple of 8.
     P10Outdoor32x16HalfScan,
 }
 

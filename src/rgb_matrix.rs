@@ -97,15 +97,23 @@ fn panic_message(payload: &(dyn Any + Send)) -> String {
     }
 }
 
+/// An error returned by [`RGBMatrix::new`].
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum MatrixCreationError {
+    /// The Raspberry Pi model could not be determined. It can be set with [`RGBMatrixConfig::pi_chip`] instead.
     ChipDeterminationError,
+    /// An option of the config is invalid, as described by the message.
     InvalidConfig(String),
+    /// The display update thread did not finish its setup in time.
     ThreadTimedOut,
+    /// The display update thread panicked during its setup, with the given message.
     ThreadPanicked(String),
+    /// The GPIO pins could not be set up.
     GpioError(GpioInitializationError),
+    /// `/dev/mem` could not be opened, which needs root privileges.
     MemoryAccessError(io::Error),
+    /// A pixel mapper can't be used with the panels, as described by the message.
     PixelMapperError(String),
 }
 
@@ -169,6 +177,8 @@ impl Display for UpdateThreadError {
     }
 }
 
+/// The controller of the display. A separate thread keeps refreshing the display with the latest canvas, and
+/// dropping the controller stops that thread and turns the display off.
 pub struct RGBMatrix {
     /// The join handle of the update thread.
     thread_handle: Option<JoinHandle<()>>,
@@ -190,6 +200,18 @@ pub struct RGBMatrix {
     brightness: u8,
     /// PWM bits for the canvases returned by `update_on_vsync`.
     pwm_bits: usize,
+}
+
+impl std::fmt::Debug for RGBMatrix {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RGBMatrix")
+            .field("enabled_input_bits", &self.enabled_input_bits)
+            .field("framerate", &self.framerate())
+            .field("suspended", &self.suspended)
+            .field("brightness", &self.brightness)
+            .field("pwm_bits", &self.pwm_bits)
+            .finish_non_exhaustive()
+    }
 }
 
 impl RGBMatrix {
@@ -486,13 +508,15 @@ impl RGBMatrix {
         Ok(canvas)
     }
 
-    /// Set the brightness in percent, clamped to 1-100.
+    /// Set the brightness in percent, clamped to 1-100. This applies to the canvases returned by
+    /// [`RGBMatrix::update_on_vsync`] from now on, not to the one that is currently being drawn to.
     pub fn set_brightness(&mut self, brightness: u8) {
         self.brightness = brightness;
     }
 
     /// Set the PWM bits used for output, clamped to 1-11. Default is 11, but if you only deal with simple
-    /// comic-colors, 1 might be sufficient. Lower values require less CPU.
+    /// comic-colors, 1 might be sufficient. Lower values require less CPU. This applies to the canvases returned
+    /// by [`RGBMatrix::update_on_vsync`] from now on, not to the one that is currently being drawn to.
     pub fn set_pwm_bits(&mut self, pwm_bits: usize) {
         self.pwm_bits = pwm_bits;
     }

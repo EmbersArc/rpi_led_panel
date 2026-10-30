@@ -14,9 +14,13 @@ pub enum MirrorDirection {
 /// The clockwise angle by which [`NamedPixelMapperType::Rotate`] turns the display.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Rotation {
+    /// Keep the display as it is.
     Deg0,
+    /// A quarter turn clockwise.
     Deg90,
+    /// A half turn.
     Deg180,
+    /// A quarter turn counterclockwise.
     Deg270,
 }
 

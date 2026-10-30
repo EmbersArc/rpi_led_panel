@@ -75,6 +75,8 @@ impl Panels {
     }
 }
 
+/// The GPIO pins that the panels are connected to. There is a constructor for each supported wiring, which can
+/// also be selected by name when parsing, e.g. `"AdafruitHat"`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct HardwareMapping {
     pub(crate) output_enable: u32,
@@ -198,7 +200,7 @@ impl HardwareMapping {
         }
     }
 
-    // An unmodified Adafruit HAT
+    /// An unmodified Adafruit HAT.
     #[must_use]
     pub const fn adafruit_hat() -> Self {
         Self {
@@ -232,7 +234,7 @@ impl HardwareMapping {
         }
     }
 
-    // An Adafruit HAT with the PWM modification
+    /// An Adafruit HAT with the PWM modification.
     #[must_use]
     pub const fn adafruit_hat_pwm() -> Self {
         Self {

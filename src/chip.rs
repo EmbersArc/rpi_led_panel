@@ -2,6 +2,7 @@ use std::fs::{read, read_to_string};
 
 use crate::error::InvalidVariantError;
 
+/// The chip of the Raspberry Pi, which determines the peripheral addresses and the default GPIO slowdown.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, strum::EnumString, strum::VariantNames)]
 #[strum(
     parse_err_fn = InvalidVariantError::new::<Self>,

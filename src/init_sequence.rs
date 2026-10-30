@@ -1,5 +1,6 @@
 use crate::{RGBMatrixConfig, error::InvalidVariantError, gpio::Gpio};
 
+/// Panels with a driver chip that needs an initialization sequence on startup.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumString, strum::VariantNames)]
 #[strum(
     parse_err_fn = InvalidVariantError::new::<Self>,
@@ -7,6 +8,7 @@ use crate::{RGBMatrixConfig, error::InvalidVariantError, gpio::Gpio};
 )]
 #[non_exhaustive]
 pub enum PanelType {
+    /// Has its configuration registers written on startup.
     FM6126,
     /// Very similar to the FM6126, but adds a third register that allows for automatic bad pixel suppression.
     FM6127,

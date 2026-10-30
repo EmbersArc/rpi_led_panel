@@ -7,6 +7,8 @@
 - Add `RGBMatrix::suspend`/`RGBMatrix::is_suspended` to clear the display and pause the update thread until the next `update_on_vsync`.
 - Add the `min_sys_sleep_microseconds` option to tune how early sleeps wake up.
 - Export the `MatrixCreationError`, `GpioInitializationError`, `UpdateThreadError` and `InvalidVariantError` error types. `MatrixCreationError` and `GpioInitializationError` are `#[non_exhaustive]`.
+- Implement `Clone` for `RGBMatrixConfig` and `Debug` for `RGBMatrix` and `Canvas`.
+- Document the public API.
 
 ### Changed
 
@@ -22,6 +24,7 @@
 
 ### Fixed
 
+- Fix the examples for canvases of a different size than one panel and for panels that are not square.
 - Fix a SIGBUS on aarch64 by reading the system timer as two 32-bit registers. [#28](https://github.com/EmbersArc/rpi_led_panel/pull/28)
 - Fix automatic chip detection on mainline kernels and for old-style revision codes with the warranty bit set.
 - Fix the `AdafruitHat`, `Classic` and `ClassicPi1` hardware mappings, which failed on startup. They now time their pulses in software, so the sound module can stay loaded.
