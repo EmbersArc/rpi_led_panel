@@ -151,9 +151,7 @@ impl NamedPixelMapperType {
             NamedPixelMapperType::UMapper => Ok(Box::new(UArrangeMapper::new_with_parameters(
                 chain, parallel,
             )?)),
-            NamedPixelMapperType::ChainLink => {
-                Ok(Box::new(ChainLinkMapper::new_with_parameters(parallel)?))
-            }
+            NamedPixelMapperType::ChainLink => Ok(Box::new(ChainLinkMapper { parallel })),
         }
     }
 }
@@ -282,12 +280,6 @@ impl PixelMapper for UArrangeMapper {
 
 struct ChainLinkMapper {
     parallel: usize,
-}
-
-impl ChainLinkMapper {
-    fn new_with_parameters(parallel: usize) -> Result<Self, MatrixCreationError> {
-        Ok(Self { parallel })
-    }
 }
 
 impl PixelMapper for ChainLinkMapper {

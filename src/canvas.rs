@@ -63,11 +63,9 @@ impl LedSequence {
     }
 }
 
-const UNUSED_GPIO_WORD: u32 = u32::MAX;
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct PixelDesignator {
-    /// Offset into the bitplane buffer, or [`UNUSED_GPIO_WORD`].
+    /// Offset into the bitplane buffer.
     gpio_word: u32,
     r_bit: u32,
     g_bit: u32,
@@ -81,7 +79,8 @@ impl PixelDesignator {
         let g = h.panels.green_bits();
         let b = h.panels.blue_bits();
         Self {
-            gpio_word: UNUSED_GPIO_WORD,
+            // Set for each pixel by the map.
+            gpio_word: 0,
             r_bit: sequence.channel_bits(Channel::First, r, g, b),
             g_bit: sequence.channel_bits(Channel::Second, r, g, b),
             b_bit: sequence.channel_bits(Channel::Third, r, g, b),
@@ -267,9 +266,6 @@ impl Canvas {
             .get(x, y)
             .expect("Pixel not in designator map. This is a bug.");
 
-        if designator.gpio_word == UNUSED_GPIO_WORD {
-            return;
-        }
         let pos_start = designator.gpio_word as usize;
         let designator_mask = !(designator.r_bit | designator.g_bit | designator.b_bit);
 

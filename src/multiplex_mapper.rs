@@ -296,23 +296,15 @@ fn map_z_stripe(
 fn map_coreman(rows: usize, cols: usize, x: usize, y: usize) -> [usize; 2] {
     let is_left_check = x < cols / 2;
 
-    if (y <= 7) || (16..=23).contains(&y) {
-        let matrix_x = ((x / (cols / 2)) * cols) + (x % (cols / 2));
-        let matrix_y = if (y & (rows / 4)) == 0 {
-            (y / (rows / 2)) * (rows / 4) + (y % (rows / 4))
-        } else {
-            0
-        };
-        [matrix_x, matrix_y]
+    let matrix_x = if (y <= 7) || (16..=23).contains(&y) {
+        ((x / (cols / 2)) * cols) + (x % (cols / 2))
+    } else if is_left_check {
+        x + cols / 2
     } else {
-        let matrix_x = if is_left_check {
-            x + cols / 2
-        } else {
-            x + cols
-        };
-        let matrix_y = (y / (rows / 2)) * (rows / 4) + y % (rows / 4);
-        [matrix_x, matrix_y]
-    }
+        x + cols
+    };
+    let matrix_y = (y / (rows / 2)) * (rows / 4) + y % (rows / 4);
+    [matrix_x, matrix_y]
 }
 
 fn map_kaler_2_scan(x: usize, y: usize) -> [usize; 2] {
@@ -390,7 +382,6 @@ fn map_inversed_z_stripe(x: usize, y: usize) -> [usize; 2] {
 
 const P10_TILE_WIDTH: usize = 8;
 const P10_TILE_HEIGHT: usize = 4;
-const P10_EVEN_VBLOCK_OFFSET: usize = 0;
 const P10_ODD_VBLOCK_OFFSET: usize = 8;
 
 fn map_p10_outdoor_1r1g1b_1(x: usize, y: usize) -> [usize; 2] {
@@ -406,13 +397,11 @@ fn map_p10_outdoor_1r1g1b_1(x: usize, y: usize) -> [usize; 2] {
 
 fn map_p10_outdoor_1r1g1b_2(x: usize, y: usize) -> [usize; 2] {
     let vblock_is_even = (y / P10_TILE_HEIGHT).is_multiple_of(2);
-    let even_vblock_shift = usize::from(vblock_is_even) * P10_EVEN_VBLOCK_OFFSET;
-    let odd_vblock_shift = usize::from(!vblock_is_even) * P10_ODD_VBLOCK_OFFSET;
 
     let matrix_x = if vblock_is_even {
         P10_TILE_WIDTH * (1 + 2 * (x / P10_TILE_WIDTH)) - (x % P10_TILE_WIDTH) - 1
     } else {
-        x + ((x + even_vblock_shift) / P10_TILE_WIDTH) * P10_TILE_WIDTH + odd_vblock_shift
+        x + (x / P10_TILE_WIDTH) * P10_TILE_WIDTH + P10_ODD_VBLOCK_OFFSET
     };
     let matrix_y = (y % P10_TILE_HEIGHT) + P10_TILE_HEIGHT * (y / (P10_TILE_HEIGHT * 2));
 
@@ -421,11 +410,9 @@ fn map_p10_outdoor_1r1g1b_2(x: usize, y: usize) -> [usize; 2] {
 
 fn map_p10_outdoor_1r1g1b_3(x: usize, y: usize) -> [usize; 2] {
     let vblock_is_even = (y / P10_TILE_HEIGHT).is_multiple_of(2);
-    let even_vblock_shift = usize::from(vblock_is_even) * P10_EVEN_VBLOCK_OFFSET;
-    let odd_vblock_shift = usize::from(!vblock_is_even) * P10_ODD_VBLOCK_OFFSET;
 
     let matrix_x = if vblock_is_even {
-        x + ((x + even_vblock_shift) / P10_TILE_WIDTH) * P10_TILE_WIDTH + odd_vblock_shift
+        x + (x / P10_TILE_WIDTH) * P10_TILE_WIDTH
     } else {
         P10_TILE_WIDTH * (2 + 2 * (x / P10_TILE_WIDTH)) - (x % P10_TILE_WIDTH) - 1
     };
