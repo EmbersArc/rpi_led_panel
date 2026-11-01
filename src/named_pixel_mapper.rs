@@ -1,6 +1,8 @@
 use std::str::FromStr;
 
-use crate::{error::InvalidPixelMapperError, rgb_matrix::MatrixCreationError};
+use crate::{
+    error::InvalidPixelMapperError, pixel_mapper::PixelMapper, rgb_matrix::MatrixCreationError,
+};
 
 /// The direction in which [`NamedPixelMapperType::Mirror`] flips the display.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -140,7 +142,7 @@ impl NamedPixelMapperType {
         self,
         chain: usize,
         parallel: usize,
-    ) -> Result<Box<dyn NamedPixelMapper>, MatrixCreationError> {
+    ) -> Result<Box<dyn PixelMapper>, MatrixCreationError> {
         match self {
             NamedPixelMapperType::Mirror(direction) => {
                 Ok(Box::new(MirrorPixelMapper { direction }))
@@ -156,28 +158,11 @@ impl NamedPixelMapperType {
     }
 }
 
-/// A pixel mapper that arranges the panels, as chosen with [`NamedPixelMapperType`].
-pub(crate) trait NamedPixelMapper {
-    fn get_size_mapping(
-        &self,
-        matrix_width: usize,
-        matrix_height: usize,
-    ) -> Result<[usize; 2], MatrixCreationError>;
-
-    fn map_visible_to_matrix(
-        &self,
-        matrix_width: usize,
-        matrix_height: usize,
-        visible_x: usize,
-        visible_y: usize,
-    ) -> [usize; 2];
-}
-
 struct MirrorPixelMapper {
     direction: MirrorDirection,
 }
 
-impl NamedPixelMapper for MirrorPixelMapper {
+impl PixelMapper for MirrorPixelMapper {
     fn get_size_mapping(
         &self,
         matrix_width: usize,
@@ -204,7 +189,7 @@ struct RotatePixelMapper {
     rotation: Rotation,
 }
 
-impl NamedPixelMapper for RotatePixelMapper {
+impl PixelMapper for RotatePixelMapper {
     fn get_size_mapping(
         &self,
         matrix_width: usize,
@@ -251,7 +236,7 @@ impl UArrangeMapper {
     }
 }
 
-impl NamedPixelMapper for UArrangeMapper {
+impl PixelMapper for UArrangeMapper {
     fn get_size_mapping(
         &self,
         matrix_width: usize,
@@ -305,7 +290,7 @@ impl ChainLinkMapper {
     }
 }
 
-impl NamedPixelMapper for ChainLinkMapper {
+impl PixelMapper for ChainLinkMapper {
     fn get_size_mapping(
         &self,
         matrix_width: usize,

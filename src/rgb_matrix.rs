@@ -22,7 +22,7 @@ use crate::{
     canvas::{Canvas, PixelDesignator, PixelDesignatorMap},
     chip::PiChip,
     gpio::{Gpio, GpioInitializationError},
-    multiplex_mapper::MultiplexMapperType,
+    multiplex_mapper::{MultiplexMapper, MultiplexMapperType},
     pixel_mapper::PixelMapper,
     utils::{FrameRateMonitor, linux_has_isol_cpu, set_thread_affinity},
 };
@@ -423,17 +423,19 @@ impl RGBMatrix {
     fn create_pixel_map(
         config: &mut RGBMatrixConfig,
     ) -> Result<PixelDesignatorMap, MatrixCreationError> {
-        let mut multiplex_mapper = config.multiplexing.map(MultiplexMapperType::create);
-        let stretch_factor = multiplex_mapper
-            .as_ref()
-            .map_or(1, |mapper| mapper.panel_stretch_factor());
+        let stretch_factor = config
+            .multiplexing
+            .map_or(1, MultiplexMapperType::stretch_factor);
         config.validate(stretch_factor)?;
+
+        let multiplex_mapper = config
+            .multiplexing
+            .map(|multiplexing| MultiplexMapper::new(multiplexing, config.rows, config.cols));
 
         // The multiplexers might choose to have a different physical layout.
         // We need to configure that first before setting up the hardware.
-        if let Some(mapper) = &mut multiplex_mapper {
-            mapper.edit_rows_cols(&mut config.rows, &mut config.cols);
-        }
+        config.rows /= stretch_factor;
+        config.cols *= stretch_factor;
 
         let pixel_designator = PixelDesignator::new(&config.hardware_mapping, config.led_sequence);
         let width = config.cols * config.chain_length;
@@ -441,16 +443,15 @@ impl RGBMatrix {
         let mut shared_mapper = PixelDesignatorMap::new(pixel_designator, width, height, config);
 
         // Apply the mapping for the panels first.
-        if let Some(mapper) = multiplex_mapper {
-            let mapper = PixelMapper::Multiplex(mapper);
-            shared_mapper = Self::apply_pixel_mapper(&shared_mapper, &mapper, pixel_designator)?;
+        if let Some(mapper) = &multiplex_mapper {
+            shared_mapper = Self::apply_pixel_mapper(&shared_mapper, mapper, pixel_designator)?;
         }
 
         // Apply higher level mappers that might arrange panels.
         for mapper_type in config.pixelmapper.iter() {
             let mapper = mapper_type.create(config.chain_length, config.parallel)?;
-            let mapper = PixelMapper::Named(mapper);
-            shared_mapper = Self::apply_pixel_mapper(&shared_mapper, &mapper, pixel_designator)?;
+            shared_mapper =
+                Self::apply_pixel_mapper(&shared_mapper, mapper.as_ref(), pixel_designator)?;
         }
 
         Ok(shared_mapper)
@@ -458,7 +459,7 @@ impl RGBMatrix {
 
     fn apply_pixel_mapper(
         shared_mapper: &PixelDesignatorMap,
-        mapper: &PixelMapper,
+        mapper: &dyn PixelMapper,
         pixel_designator: PixelDesignator,
     ) -> Result<PixelDesignatorMap, MatrixCreationError> {
         let old_width = shared_mapper.width();
@@ -602,8 +603,7 @@ mod tests {
     use strum::VariantNames;
 
     use super::{
-        MatrixCreationError, PixelDesignator, PixelDesignatorMap, PixelMapper, RGBMatrix,
-        panic_message,
+        MatrixCreationError, PixelDesignator, PixelDesignatorMap, RGBMatrix, panic_message,
     };
     use crate::{
         GpioInitializationError, MultiplexMapperType, NamedPixelMapperType, RGBMatrixConfig,
@@ -688,13 +688,12 @@ mod tests {
         };
         let pixel_designator = PixelDesignator::new(&config.hardware_mapping, config.led_sequence);
         let map = PixelDesignatorMap::new(pixel_designator, 256, 32, &config);
-        let mapper = PixelMapper::Named(
-            NamedPixelMapperType::Rotate(Rotation::Deg90)
-                .create(4, 1)
-                .unwrap(),
-        );
+        let mapper = NamedPixelMapperType::Rotate(Rotation::Deg90)
+            .create(4, 1)
+            .unwrap();
 
-        let rotated = RGBMatrix::apply_pixel_mapper(&map, &mapper, pixel_designator).unwrap();
+        let rotated =
+            RGBMatrix::apply_pixel_mapper(&map, mapper.as_ref(), pixel_designator).unwrap();
 
         assert_eq!((rotated.width(), rotated.height()), (32, 256));
         assert_eq!(rotated.get(0, 0), map.get(255, 0));
