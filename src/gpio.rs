@@ -81,7 +81,7 @@ impl Gpio {
     pub(crate) fn new(
         chip: PiChip,
         config: &RGBMatrixConfig,
-        address_setter: &dyn RowAddressSetter,
+        address_setter: &RowAddressSetter,
     ) -> Result<Self, GpioInitializationError> {
         // The sound module uses the PWM peripheral, which we need for hardware pulsing.
         let hardware_pulsing = pwm_pin_function(config.hardware_mapping.output_enable).is_some();

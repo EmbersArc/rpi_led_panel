@@ -266,7 +266,7 @@ impl RGBMatrix {
 
             let mut address_setter = config.row_setter.create(&config);
 
-            let mut gpio = match Gpio::new(chip, &config, address_setter.as_ref()) {
+            let mut gpio = match Gpio::new(chip, &config, &address_setter) {
                 Ok(gpio) => gpio,
                 Err(error) => {
                     // Fails only if the main thread stopped waiting, in which case there is no one to tell.
@@ -344,7 +344,7 @@ impl RGBMatrix {
                         blank_canvas.dump_to_matrix(
                             &mut gpio,
                             &config.hardware_mapping,
-                            address_setter.as_mut(),
+                            &mut address_setter,
                             0,
                             color_clk_mask,
                         );
@@ -361,7 +361,7 @@ impl RGBMatrix {
                 thread_canvas.dump_to_matrix(
                     &mut gpio,
                     &config.hardware_mapping,
-                    address_setter.as_mut(),
+                    &mut address_setter,
                     dither_start_bits[dither_low_bit_sequence % dither_start_bits.len()],
                     color_clk_mask,
                 );
@@ -382,7 +382,7 @@ impl RGBMatrix {
             thread_canvas.dump_to_matrix(
                 &mut gpio,
                 &config.hardware_mapping,
-                address_setter.as_mut(),
+                &mut address_setter,
                 0,
                 color_clk_mask,
             );

@@ -302,7 +302,7 @@ impl Canvas {
         &self,
         gpio: &mut Gpio,
         hardware_mapping: &HardwareMapping,
-        row_setter: &mut dyn RowAddressSetter,
+        row_setter: &mut RowAddressSetter,
         pwm_low_bit: usize,
         color_clk_mask: u32,
     ) {
