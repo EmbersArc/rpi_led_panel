@@ -271,7 +271,7 @@ impl RowAddressSetter for ABCShiftRegisterRowAddressSetter {
 }
 
 /// The [`DirectABCDLineRowAddressSetter`] sets the address by one of
-/// row pin ABCD for 32х16 matrix 1:4 multiplexing. The matrix has
+/// row pin ABCD for 32x16 matrix 1:4 multiplexing. The matrix has
 /// 4 addressable rows. Row is selected by a low level on the
 /// corresponding row address pin. Other row address pins must be in high level.
 ///
