@@ -43,7 +43,7 @@ enum RowWiring {
         row_lookup: [u32; 32],
     },
     /// ABC Shifter + DE direct: sets bits ABC using
-    /// a 8 bit shifter and DE directly. The panel this works with has 8 SM5266
+    /// an 8 bit shifter and DE directly. The panel this works with has 8 SM5266
     /// shifters (4 for the top 32 rows and 4 for the bottom 32 rows).
     /// DE is used to select the active shifter
     /// (rows 1-8/33-40, 9-16/41-48, 17-24/49-56, 25-32/57-64).

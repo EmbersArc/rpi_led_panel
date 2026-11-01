@@ -163,14 +163,14 @@ impl HardwareMapping {
                 color_bits: [
                     /* Parallel chain 0, RGB for both sub-panels */
                     ColorBits {
-                        r1: gpio_bits!(11), // masks: SPI0_SCKL
+                        r1: gpio_bits!(11), // masks: SPI0_SCLK
                         g1: gpio_bits!(27), // Not on RPi1, Rev1; use "regular-pi1" instead
                         b1: gpio_bits!(7),  // masks: SPI0_CE1
                         r2: gpio_bits!(8),  // masks: SPI0_CE0
                         g2: gpio_bits!(9),  // masks: SPI0_MISO
                         b2: gpio_bits!(10), // masks: SPI0_MOSI
                     },
-                    /* All the following are only available with 40 GPIP pins, on A+/B+/Pi2,3 */
+                    /* All the following are only available with 40 GPIO pins, on A+/B+/Pi2,3 */
                     /* Chain 1 */
                     ColorBits {
                         r1: gpio_bits!(12),
@@ -183,8 +183,8 @@ impl HardwareMapping {
                     /* Chain 2 */
                     ColorBits {
                         r1: gpio_bits!(14), // masks TxD when parallel=3
-                        g1: gpio_bits!(2),  // masks SCL when parallel=3
-                        b1: gpio_bits!(3),  // masks SDA when parallel=3
+                        g1: gpio_bits!(2),  // masks SDA when parallel=3
+                        b1: gpio_bits!(3),  // masks SCL when parallel=3
                         r2: gpio_bits!(26),
                         g2: gpio_bits!(16),
                         b2: gpio_bits!(21),
@@ -259,7 +259,7 @@ impl HardwareMapping {
             panels: Panels {
                 color_bits: [
                     ColorBits {
-                        r1: gpio_bits!(11), // masks: SPI0_SCKL
+                        r1: gpio_bits!(11), // masks: SPI0_SCLK
                         // On Pi1 Rev1, the pin other Pis have GPIO27, these have GPIO21. So make this work for
                         // both Rev1 and Rev2.
                         g1: gpio_bits!(21, 27),

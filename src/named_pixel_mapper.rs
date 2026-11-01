@@ -33,7 +33,7 @@ pub enum Rotation {
 ///
 /// You can apply multiple mappers in your configuration, and they will be applied in the order you specify.
 /// For example, to first mirror the panels horizontally and then rotate the resulting screen,
-/// You can use `--pixelmapper Mirror:H --pixelmapper Rotate:90`
+/// you can use `--pixelmapper Mirror:H --pixelmapper Rotate:90`
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum NamedPixelMapperType {

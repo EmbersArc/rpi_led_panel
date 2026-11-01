@@ -49,7 +49,7 @@ impl Display for GpioInitializationError {
             ),
             GpioInitializationError::SoundModuleLoaded => f.write_str(
                 "The sound module is loaded. Disable on-board sound first.\n\
-                \t* Raspberry PI OS: Set `dtparam=audio=off` in `/boot/config.txt`\n\
+                \t* Raspberry Pi OS: Set `dtparam=audio=off` in `/boot/config.txt`\n\
                 \t* Other distributions: Add `blacklist snd_bcm2835` in \
                 `/etc/modprobe.d/alsa-blacklist.conf`\n\
                 Finally, reboot the system and try again.",
@@ -74,7 +74,7 @@ pub(crate) struct Gpio {
 }
 
 impl Gpio {
-    /// Initialize GPIO and loads all registers. Needs root privileges.
+    /// Initialize GPIO and load all registers. Needs root privileges.
     /// Will result in the application dropping those privileges if privilege dropping is enabled in the config.
     pub(crate) fn new(
         chip: PiChip,
@@ -106,7 +106,7 @@ impl Gpio {
 
         // Hack: for the PWM mod, the user soldered together GPIO 18 (new OE)
         // with GPIO 4 (old OE).
-        // Since they are connected inside the HAT, want to make extra sure that,
+        // Since they are connected inside the HAT, we want to make extra sure that,
         // whatever the outside system set as pinmux, the old OE is _not_ also
         // set as output so that these GPIO outputs don't fight each other.
         //

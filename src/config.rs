@@ -6,7 +6,7 @@ use crate::{
     rgb_matrix::MatrixCreationError, row_address_setter::RowAddressSetterType,
 };
 
-/// Typically, a Hub75 panel is split in two half displays, so that a 1:16 multiplexing actually multiplexes
+/// Typically, a HUB75 panel is split in two half displays, so that a 1:16 multiplexing actually multiplexes
 /// over two half displays and gives 32 lines.
 pub(crate) const SUB_PANELS: usize = 2;
 
@@ -60,7 +60,7 @@ pub struct RGBMatrixConfig {
     /// display (pwm_bits=11) are somewhere between 100 and 300. Default: 130
     #[argh(option, default = "130")]
     pub pwm_lsb_nanoseconds: u32,
-    /// the Raspberry Pi starting with Pi2 are putting out data too fast for almost all LED panels. In this
+    /// the Raspberry Pis starting with Pi2 are putting out data too fast for almost all LED panels. In this
     /// case, you want to slow down writing to GPIO. Zero for this parameter means 'no slowdown'. The default
     /// 1 typically works fine, but often you have to even go further by setting it to 2. If you have a
     /// Raspberry Pi with a slower processor (Model A, A+, B+, Zero), then a value of 0 might work and is

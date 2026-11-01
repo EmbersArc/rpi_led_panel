@@ -381,7 +381,7 @@ mod embedded_graphics_support {
             I: IntoIterator<Item = Pixel<Self::Color>>,
         {
             for Pixel(coord, color) in pixels {
-                // `DrawTarget` implementation are required to discard any out of bounds pixels without returning
+                // `DrawTarget` implementations are required to discard any out of bounds pixels without returning
                 // an error or causing a panic.
                 if (0..self.width() as i32).contains(&coord.x)
                     && (0..self.height() as i32).contains(&coord.y)
