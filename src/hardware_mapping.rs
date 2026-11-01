@@ -127,14 +127,11 @@ impl HardwareMapping {
     }
 
     /// Mask of bits while clocking in.
-    pub(crate) fn get_color_clock_mask(&self, parallel: usize) -> u32 {
-        let mut color_clk_mask: u32 = 0;
-        (0..6).for_each(|panel| {
-            if parallel > panel {
-                color_clk_mask |= &self.panels.color_bits[panel].used_bits();
-            }
-        });
-        color_clk_mask |= self.clock;
+    pub(crate) fn color_clock_mask(&self, parallel: usize) -> u32 {
+        let mut color_clk_mask = self.clock;
+        for color_bits in self.panels.color_bits.iter().take(parallel) {
+            color_clk_mask |= color_bits.used_bits();
+        }
         color_clk_mask
     }
 

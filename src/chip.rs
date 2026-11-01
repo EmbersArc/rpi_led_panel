@@ -88,7 +88,7 @@ impl PiChip {
     }
 
     // All peripherals can be described by an offset from the Peripheral Base Address.
-    pub(crate) const fn get_peripherals_base(self) -> u64 {
+    pub(crate) const fn peripherals_base(self) -> u64 {
         match self {
             PiChip::BCM2708 => 0x2000_0000,
             PiChip::BCM2709 => 0x3F00_0000,

@@ -189,7 +189,7 @@ impl MultiplexMapper {
 }
 
 impl PixelMapper for MultiplexMapper {
-    fn get_size_mapping(
+    fn size_mapping(
         &self,
         matrix_width: usize,
         matrix_height: usize,
@@ -286,9 +286,9 @@ fn map_z_stripe(
     let vert_block_is_odd = (y / tile_height) % 2;
 
     let even_vblock_shift = (1 - vert_block_is_odd) * even_vblock_offset;
-    let odd_vblock_shitf = vert_block_is_odd * odd_vblock_offset;
+    let odd_vblock_shift = vert_block_is_odd * odd_vblock_offset;
 
-    let matrix_x = x + ((x + even_vblock_shift) / tile_width) * tile_width + odd_vblock_shitf;
+    let matrix_x = x + ((x + even_vblock_shift) / tile_width) * tile_width + odd_vblock_shift;
     let matrix_y = (y % tile_height) + tile_height * (y / (tile_height * 2));
     [matrix_x, matrix_y]
 }
@@ -382,7 +382,7 @@ fn map_inversed_z_stripe(x: usize, y: usize) -> [usize; 2] {
 }
 
 /*
- * Vairous P10 1R1G1B Outdoor implementations for 16x16 modules with separate
+ * Various P10 1R1G1B Outdoor implementations for 16x16 modules with separate
  * RGB LEDs, e.g.:
  * https://www.ledcontrollercard.com/english/p10-outdoor-rgb-led-module-160x160mm-dip.html
  *

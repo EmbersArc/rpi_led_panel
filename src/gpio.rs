@@ -8,7 +8,7 @@ use std::{
 use crate::{
     RGBMatrixConfig,
     chip::PiChip,
-    config::K_BIT_PLANES,
+    config::BIT_PLANES,
     gpio_bits,
     pin_pulser::{PinPulser, pwm_pin_function},
     registers::{ClkRegisters, GPIOFunction, GPIORegisters, PWMRegisters, TimeRegisters},
@@ -131,7 +131,7 @@ impl Gpio {
         gpio_registers.select_function_for_bits(input_bits, GPIOFunction::Input);
 
         // Each bit plane is shown twice as long as the previous one, except for the dithered ones.
-        let bitplane_timings: Vec<u32> = (0..K_BIT_PLANES)
+        let bitplane_timings: Vec<u32> = (0..BIT_PLANES)
             .map(|b| config.pwm_lsb_nanoseconds << b.saturating_sub(config.dither_bits))
             .collect();
 
@@ -216,8 +216,8 @@ impl Gpio {
     }
 
     /// Time instant in microseconds.
-    pub(crate) fn get_time(&self) -> u64 {
-        self.time_registers.get_time()
+    pub(crate) fn time(&self) -> u64 {
+        self.time_registers.time()
     }
 
     /// Sleep for exactly this many microseconds.

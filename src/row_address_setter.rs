@@ -110,18 +110,16 @@ impl RowAddressSetter {
         row_mask |= if double_rows > 8 { h.d } else { 0 };
         row_mask |= if double_rows > 16 { h.e } else { 0 };
 
+        // To avoid the bit-fiddle in the critical path, utilize
+        // a lookup-table for all possible rows.
         let mut row_lookup = [0u32; 32];
-        (0..double_rows).for_each(|i| {
-            // To avoid the bit-fiddle in the critical path, utilize
-            // a lookup-table for all possible rows.
-            let mut row_address = 0;
-            row_address |= if i & 0x00001 != 0 { h.a } else { 0 };
-            row_address |= if i & 0b00010 != 0 { h.b } else { 0 };
-            row_address |= if i & 0b00100 != 0 { h.c } else { 0 };
-            row_address |= if i & 0b01000 != 0 { h.d } else { 0 };
-            row_address |= if i & 0b10000 != 0 { h.e } else { 0 };
-            row_lookup[i] = row_address;
-        });
+        for (i, row_address) in row_lookup.iter_mut().enumerate().take(double_rows) {
+            *row_address |= if i & 0b00001 != 0 { h.a } else { 0 };
+            *row_address |= if i & 0b00010 != 0 { h.b } else { 0 };
+            *row_address |= if i & 0b00100 != 0 { h.c } else { 0 };
+            *row_address |= if i & 0b01000 != 0 { h.d } else { 0 };
+            *row_address |= if i & 0b10000 != 0 { h.e } else { 0 };
+        }
 
         Self::new(row_mask, RowWiring::Direct { row_lookup })
     }
@@ -137,12 +135,10 @@ impl RowAddressSetter {
             row_mask |= h.e;
         }
         let mut row_lookup = [0u32; 32];
-        (0..config.double_rows()).for_each(|i| {
-            let mut row_address = 0;
-            row_address |= if i & 0x08 != 0 { h.d } else { 0 };
-            row_address |= if i & 0x10 != 0 { h.e } else { 0 };
-            row_lookup[i] = row_address;
-        });
+        for (i, row_address) in row_lookup.iter_mut().enumerate().take(config.double_rows()) {
+            *row_address |= if i & 0x08 != 0 { h.d } else { 0 };
+            *row_address |= if i & 0x10 != 0 { h.e } else { 0 };
+        }
         let wiring = RowWiring::SM5266 {
             row_lookup,
             bk: h.c,
@@ -167,10 +163,10 @@ impl RowAddressSetter {
         let h = config.hardware_mapping;
         let wiring = RowWiring::DirectABCDLine {
             row_lines: [
-                /*h.a |*/ h.b | h.c | h.d,
-                h.a /*| h.b*/ | h.c | h.d,
-                h.a | h.b /*| h.c */| h.d,
-                h.a | h.b | h.c, /*| h.d*/
+                h.b | h.c | h.d,
+                h.a | h.c | h.d,
+                h.a | h.b | h.d,
+                h.a | h.b | h.c,
             ],
         };
         Self::new(h.a | h.b | h.c | h.d, wiring)
@@ -195,7 +191,7 @@ impl RowAddressSetter {
                 dck,
             } => {
                 gpio.set_bits(bk); // Enable serial input for the shifter.
-                (0..8).rev().for_each(|r| {
+                for r in (0..8).rev() {
                     if row % 8 == r {
                         gpio.set_bits(din);
                     } else {
@@ -204,7 +200,7 @@ impl RowAddressSetter {
                     gpio.set_bits(dck);
                     gpio.set_bits(dck); // Longer clock time; tested with Pi3
                     gpio.clear_bits(dck);
-                });
+                }
                 gpio.clear_bits(bk); // Disable serial input to keep unwanted bits out of the shifters.
                 // Set bits D and E to enable the proper shifter to display the selected row.
                 gpio.write_masked_bits(row_lookup[row], self.row_mask);
@@ -215,7 +211,7 @@ impl RowAddressSetter {
                 double_rows,
                 inverted,
             } => {
-                (0..double_rows).for_each(|activate| {
+                for activate in 0..double_rows {
                     gpio.clear_bits(clock);
                     if (activate == double_rows - 1 - row) == inverted {
                         gpio.set_bits(data);
@@ -223,7 +219,7 @@ impl RowAddressSetter {
                         gpio.clear_bits(data);
                     }
                     gpio.set_bits(clock);
-                });
+                }
                 if inverted {
                     gpio.set_bits(clock);
                     gpio.clear_bits(clock);

@@ -69,10 +69,7 @@ fn initialize_update_thread(chip: PiChip) {
         )
         .is_err()
     {
-        warn!(
-            "Could not set core {} to performance mode.",
-            last_core_id + 1
-        );
+        warn!("Could not set core {last_core_id} to performance mode.");
     }
 
     // Run as a realtime thread with the highest priority.
@@ -162,7 +159,7 @@ impl UpdateThread {
         let color_clk_mask = self
             .config
             .hardware_mapping
-            .get_color_clock_mask(self.config.parallel);
+            .color_clock_mask(self.config.parallel);
         let mut output = MatrixOutput {
             gpio,
             address_setter,
@@ -194,7 +191,7 @@ impl UpdateThread {
         let mut suspended = false;
 
         loop {
-            let start_time = output.gpio.get_time();
+            let start_time = output.gpio.time();
             // Read input bits and send them if they have changed.
             let new_inputs = output.gpio.read();
             if new_inputs != last_gpio_inputs {
@@ -249,7 +246,7 @@ impl UpdateThread {
             self.frame_rate_monitor.update();
 
             // Sleep for the rest of the frame.
-            let now_time = output.gpio.get_time();
+            let now_time = output.gpio.time();
             let end_time = start_time + frame_time_target_us;
             if let Some(remaining_time) = end_time.checked_sub(now_time) {
                 output.gpio.sleep(remaining_time);
@@ -511,10 +508,10 @@ impl RGBMatrix {
     ) -> Result<PixelDesignatorMap, MatrixCreationError> {
         let old_width = shared_mapper.width();
         let old_height = shared_mapper.height();
-        let [new_width, new_height] = mapper.get_size_mapping(old_width, old_height)?;
+        let [new_width, new_height] = mapper.size_mapping(old_width, old_height)?;
         // Every pixel is copied from the old map below, so there is no need to compute the physical layout.
         let mut new_mapper = PixelDesignatorMap::new_unmapped(
-            shared_mapper.get_pixel_designator(),
+            shared_mapper.pixel_designator(),
             new_width,
             new_height,
         );

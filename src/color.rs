@@ -1,12 +1,12 @@
 use std::sync::LazyLock;
 
-use crate::config::K_BIT_PLANES;
+use crate::config::BIT_PLANES;
 
 static CIE1931: LazyLock<ColorLookup> = LazyLock::new(ColorLookup::new_cie1931);
 
 // Do CIE1931 luminance correction and scale to output bitplanes
 fn luminance_cie1931(c: u8, brightness: u8) -> u16 {
-    let out_factor = ((1 << K_BIT_PLANES) - 1) as f32;
+    let out_factor = ((1 << BIT_PLANES) - 1) as f32;
     let v = f32::from(c) * f32::from(brightness) / 255.0;
     (out_factor
         * (if v <= 8.0 {
@@ -28,11 +28,11 @@ impl ColorLookup {
 
     fn new_cie1931() -> Self {
         let mut per_brightness = [[0; 256]; 100];
-        (0..=255u8).for_each(|c| {
-            (0..100u8).for_each(|b| {
+        for c in 0..=255u8 {
+            for b in 0..100u8 {
                 per_brightness[usize::from(b)][usize::from(c)] = luminance_cie1931(c, b + 1);
-            });
-        });
+            }
+        }
         Self { per_brightness }
     }
 

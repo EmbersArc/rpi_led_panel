@@ -163,7 +163,7 @@ struct MirrorPixelMapper {
 }
 
 impl PixelMapper for MirrorPixelMapper {
-    fn get_size_mapping(
+    fn size_mapping(
         &self,
         matrix_width: usize,
         matrix_height: usize,
@@ -190,7 +190,7 @@ struct RotatePixelMapper {
 }
 
 impl PixelMapper for RotatePixelMapper {
-    fn get_size_mapping(
+    fn size_mapping(
         &self,
         matrix_width: usize,
         matrix_height: usize,
@@ -237,7 +237,7 @@ impl UArrangeMapper {
 }
 
 impl PixelMapper for UArrangeMapper {
-    fn get_size_mapping(
+    fn size_mapping(
         &self,
         matrix_width: usize,
         matrix_height: usize,
@@ -291,7 +291,7 @@ impl ChainLinkMapper {
 }
 
 impl PixelMapper for ChainLinkMapper {
-    fn get_size_mapping(
+    fn size_mapping(
         &self,
         matrix_width: usize,
         matrix_height: usize,

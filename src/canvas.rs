@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    RGBMatrixConfig, color::ColorLookup, config::K_BIT_PLANES, error::InvalidVariantError,
+    RGBMatrixConfig, color::ColorLookup, config::BIT_PLANES, error::InvalidVariantError,
     gpio::Gpio, hardware_mapping::HardwareMapping, row_address_setter::RowAddressSetter,
 };
 
@@ -42,7 +42,7 @@ pub enum LedSequence {
 }
 
 impl LedSequence {
-    fn get_gpio(self, channel: Channel, red_bits: u32, green_bits: u32, blue_bits: u32) -> u32 {
+    fn channel_bits(self, channel: Channel, red_bits: u32, green_bits: u32, blue_bits: u32) -> u32 {
         match channel {
             Channel::First => match self {
                 LedSequence::Rgb | LedSequence::Rbg => red_bits,
@@ -82,9 +82,9 @@ impl PixelDesignator {
         let b = h.panels.blue_bits();
         Self {
             gpio_word: UNUSED_GPIO_WORD,
-            r_bit: sequence.get_gpio(Channel::First, r, g, b),
-            g_bit: sequence.get_gpio(Channel::Second, r, g, b),
-            b_bit: sequence.get_gpio(Channel::Third, r, g, b),
+            r_bit: sequence.channel_bits(Channel::First, r, g, b),
+            g_bit: sequence.channel_bits(Channel::Second, r, g, b),
+            b_bit: sequence.channel_bits(Channel::Third, r, g, b),
         }
     }
 
@@ -141,7 +141,7 @@ impl PixelDesignatorMap {
             for x in 0..width {
                 let position = y * width + x;
                 let d = &mut buffer[position];
-                let offset = (y % double_rows) * (width * K_BIT_PLANES) + x;
+                let offset = (y % double_rows) * (width * BIT_PLANES) + x;
                 d.gpio_word = u32::try_from(offset).expect("Bitplane buffer too large.");
 
                 let panel = y / config.rows;
@@ -152,9 +152,9 @@ impl PixelDesignatorMap {
                     (color_bits.r2, color_bits.g2, color_bits.b2)
                 };
 
-                d.r_bit = config.led_sequence.get_gpio(Channel::First, r, g, b);
-                d.g_bit = config.led_sequence.get_gpio(Channel::Second, r, g, b);
-                d.b_bit = config.led_sequence.get_gpio(Channel::Third, r, g, b);
+                d.r_bit = config.led_sequence.channel_bits(Channel::First, r, g, b);
+                d.g_bit = config.led_sequence.channel_bits(Channel::Second, r, g, b);
+                d.b_bit = config.led_sequence.channel_bits(Channel::Third, r, g, b);
             }
         }
         Self {
@@ -175,7 +175,7 @@ impl PixelDesignatorMap {
         self.buffer.get_mut(position)
     }
 
-    pub(crate) fn get_pixel_designator(&self) -> PixelDesignator {
+    pub(crate) fn pixel_designator(&self) -> PixelDesignator {
         self.pixel_designator
     }
 
@@ -222,9 +222,9 @@ impl Canvas {
         Self {
             cols,
             double_rows,
-            bitplane_buffer: vec![0u32; double_rows * cols * K_BIT_PLANES],
+            bitplane_buffer: vec![0u32; double_rows * cols * BIT_PLANES],
             shared_mapper: Arc::new(shared_mapper),
-            pwm_bits: config.pwm_bits.clamp(1, K_BIT_PLANES),
+            pwm_bits: config.pwm_bits.clamp(1, BIT_PLANES),
             brightness: config.led_brightness.clamp(1, 100),
             color_lookup,
             interlaced: config.interlaced,
@@ -244,7 +244,7 @@ impl Canvas {
     }
 
     fn row_start(&self, double_row: usize, bit: usize) -> usize {
-        double_row * (self.cols * K_BIT_PLANES) + bit * self.cols
+        double_row * (self.cols * BIT_PLANES) + bit * self.cols
     }
 
     fn row_at(&self, double_row: usize, bit: usize) -> &[u32] {
@@ -275,27 +275,27 @@ impl Canvas {
 
         let color = self.color_lookup.lookup_rgb(self.brightness, r, g, b);
 
-        let min_bit_plane = K_BIT_PLANES - self.pwm_bits;
+        let min_bit_plane = BIT_PLANES - self.pwm_bits;
 
-        (min_bit_plane..K_BIT_PLANES).for_each(|plane| {
+        for plane in min_bit_plane..BIT_PLANES {
             let pos = pos_start + self.cols * plane;
             self.bitplane_buffer[pos] &= designator_mask;
             self.bitplane_buffer[pos] |= designator.plane_bits(color, plane);
-        });
+        }
     }
 
     /// Set every pixel to the same color.
     pub fn fill(&mut self, r: u8, g: u8, b: u8) {
-        let designator = self.shared_mapper.get_pixel_designator();
+        let designator = self.shared_mapper.pixel_designator();
 
         let color = self.color_lookup.lookup_rgb(self.brightness, r, g, b);
 
-        (K_BIT_PLANES - self.pwm_bits..K_BIT_PLANES).for_each(|plane| {
+        for plane in BIT_PLANES - self.pwm_bits..BIT_PLANES {
             let plane_bits = designator.plane_bits(color, plane);
-            (0..self.double_rows).for_each(|row| {
+            for row in 0..self.double_rows {
                 self.row_at_mut(row, plane).fill(plane_bits);
-            });
-        });
+            }
+        }
     }
 
     pub(crate) fn dump_to_matrix(
@@ -307,7 +307,7 @@ impl Canvas {
         color_clk_mask: u32,
     ) {
         // Depending on if we do dithering, we might not always show the lowest bits.
-        let start_bit = (K_BIT_PLANES - self.pwm_bits).max(pwm_low_bit);
+        let start_bit = (BIT_PLANES - self.pwm_bits).max(pwm_low_bit);
 
         let half_double = self.double_rows.div_ceil(2);
         for row_loop in 0..self.double_rows {
@@ -323,7 +323,7 @@ impl Canvas {
 
             // Rows can't be switched very quickly without ghosting, so we do the
             // full PWM of one row before switching rows.
-            for b in start_bit..K_BIT_PLANES {
+            for b in start_bit..BIT_PLANES {
                 // While the output enable is still on, we can already clock in the next data.
                 let row = self.row_at(d_row, b);
                 row.iter().for_each(|col| {
@@ -350,7 +350,7 @@ impl Canvas {
     }
 
     pub(crate) fn set_pwm_bits(&mut self, pwm_bits: usize) {
-        self.pwm_bits = pwm_bits.clamp(1, K_BIT_PLANES);
+        self.pwm_bits = pwm_bits.clamp(1, BIT_PLANES);
     }
 
     pub(crate) fn set_brightness(&mut self, brightness: u8) {

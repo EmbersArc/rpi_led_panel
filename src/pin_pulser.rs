@@ -113,7 +113,7 @@ impl HardwarePinPulser {
             pwm_registers.push_fifo(self.pulse_periods[bitplane]);
         } else {
             // Keep the actual range as short as possible, as we have to wait for one full period of these in
-            // the zero phase. The hardware can't deal with values < 2, so only do this when we have have
+            // the zero phase. The hardware can't deal with values < 2, so only do this when we have
             // enough of these.
             let period_fraction = self.pulse_periods[bitplane] / 8;
             pwm_registers.set_pwm_pulse_period(period_fraction);
@@ -132,7 +132,7 @@ impl HardwarePinPulser {
         // kept after the FIFO is emptied.
         pwm_registers.push_fifo(0);
 
-        self.pulse_end_hint_us = Some(time_registers.get_time() + self.sleep_hints_us[bitplane]);
+        self.pulse_end_hint_us = Some(time_registers.time() + self.sleep_hints_us[bitplane]);
         pwm_registers.enable_pwm();
     }
 
@@ -141,7 +141,7 @@ impl HardwarePinPulser {
             return;
         };
 
-        let remaining_time_us = pulse_end_hint_us.saturating_sub(time_registers.get_time());
+        let remaining_time_us = pulse_end_hint_us.saturating_sub(time_registers.time());
         sleep_at_most(
             Duration::from_micros(remaining_time_us),
             self.min_sys_sleep_time,

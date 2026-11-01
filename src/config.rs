@@ -25,7 +25,7 @@ const MAX_DITHER_BITS: usize = 2;
 /// Maximum usable bit planes. 11 bits seems to be a sweet spot in which we still get somewhat useful refresh
 /// rate and have good color richness. This is the default setting. However, in low-light situations, we want
 /// to be able to scale down brightness more by having more bits at the bottom.
-pub(crate) const K_BIT_PLANES: usize = 11;
+pub(crate) const BIT_PLANES: usize = 11;
 
 /// Configuration for an RGB matrix panel controller.
 #[derive(FromArgs, Debug, Clone, PartialEq, Eq, Hash)]
@@ -180,9 +180,9 @@ impl RGBMatrixConfig {
             )));
         }
 
-        if !(1..=K_BIT_PLANES).contains(&self.pwm_bits) {
+        if !(1..=BIT_PLANES).contains(&self.pwm_bits) {
             return Err(MatrixCreationError::InvalidConfig(format!(
-                "pwm_bits needs to be from 1 to {K_BIT_PLANES}, but is {}.",
+                "pwm_bits needs to be from 1 to {BIT_PLANES}, but is {}.",
                 self.pwm_bits
             )));
         }

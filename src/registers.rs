@@ -92,7 +92,7 @@ fn mmap_bcm_register(chip: PiChip, offset: u64, size_bytes: usize) -> io::Result
         .read(true)
         .write(true)
         .open("/dev/mem")?;
-    let base = chip.get_peripherals_base();
+    let base = chip.peripherals_base();
     let map = MmapOptions::new()
         .offset(base + offset)
         .len(size_bytes)
@@ -174,7 +174,7 @@ impl TimeRegisters {
     }
 
     #[inline]
-    pub(crate) fn get_time(&self) -> u64 {
+    pub(crate) fn time(&self) -> u64 {
         loop {
             let high = self.high.read();
             let low = self.low.read();
