@@ -8,7 +8,9 @@ use std::{
     mem::replace,
     sync::Arc,
     sync::atomic::{AtomicU32, Ordering},
-    sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, TryRecvError, channel, sync_channel},
+    sync::mpsc::{
+        Receiver, RecvTimeoutError, Sender, SyncSender, TryRecvError, channel, sync_channel,
+    },
     thread::{JoinHandle, spawn},
     time::Duration,
 };
@@ -22,8 +24,10 @@ use crate::{
     canvas::{Canvas, PixelDesignator, PixelDesignatorMap},
     chip::PiChip,
     gpio::{Gpio, GpioInitializationError},
+    hardware_mapping::HardwareMapping,
     multiplex_mapper::{MultiplexMapper, MultiplexMapperType},
     pixel_mapper::PixelMapper,
+    row_address_setter::RowAddressSetter,
     utils::{FrameRateMonitor, linux_has_isol_cpu, set_thread_affinity},
 };
 
@@ -82,6 +86,175 @@ fn initialize_update_thread(chip: PiChip) {
         // Fall back to the highest non-realtime priority.
         if set_current_thread_priority(ThreadPriority::Max).is_err() {
             warn!("Could not set thread priority. This might lead to reduced performance.");
+        }
+    }
+}
+
+/// The hardware that the display update thread draws to. The GPIO registers can't leave that thread.
+struct MatrixOutput {
+    gpio: Gpio,
+    address_setter: RowAddressSetter,
+    hardware_mapping: HardwareMapping,
+    color_clk_mask: u32,
+}
+
+impl MatrixOutput {
+    fn draw(&mut self, canvas: &Canvas, pwm_low_bit: usize) {
+        canvas.dump_to_matrix(
+            &mut self.gpio,
+            &self.hardware_mapping,
+            &mut self.address_setter,
+            pwm_low_bit,
+            self.color_clk_mask,
+        );
+    }
+
+    /// Clear the canvas and draw it so that no row stays lit.
+    fn blank(&mut self, canvas: &mut Canvas) {
+        canvas.fill(0, 0, 0);
+        self.draw(canvas, 0);
+    }
+}
+
+/// What the display update thread takes over from [`RGBMatrix::new`].
+struct UpdateThread {
+    chip: PiChip,
+    config: RGBMatrixConfig,
+    canvas: Canvas,
+    frame_rate_monitor: FrameRateMonitor,
+    message_receiver: Receiver<ThreadMessage>,
+    canvas_from_thread_sender: SyncSender<Canvas>,
+    input_sender: Sender<u32>,
+    thread_start_result_sender: Sender<Result<u32, MatrixCreationError>>,
+}
+
+impl UpdateThread {
+    fn run(mut self) {
+        initialize_update_thread(self.chip);
+
+        let address_setter = self.config.row_setter.create(&self.config);
+
+        let mut gpio = match Gpio::new(self.chip, &self.config, &address_setter) {
+            Ok(gpio) => gpio,
+            Err(error) => {
+                // Fails only if the main thread stopped waiting, in which case there is no one to tell.
+                self.thread_start_result_sender
+                    .send(Err(MatrixCreationError::GpioError(error)))
+                    .ok();
+                return;
+            }
+        };
+
+        // Run the initialization sequence if necessary.
+        if let Some(panel_type) = self.config.panel_type {
+            panel_type.run_init_sequence(&mut gpio, &self.config);
+        }
+
+        let enabled_input_bits = gpio.request_enabled_inputs(self.config.input_bits);
+        // The main thread stopped waiting and returned an error, so nobody will use the matrix.
+        if self
+            .thread_start_result_sender
+            .send(Ok(enabled_input_bits))
+            .is_err()
+        {
+            return;
+        }
+
+        let color_clk_mask = self
+            .config
+            .hardware_mapping
+            .get_color_clock_mask(self.config.parallel);
+        let mut output = MatrixOutput {
+            gpio,
+            address_setter,
+            hardware_mapping: self.config.hardware_mapping,
+            color_clk_mask,
+        };
+
+        self.refresh_display(&mut output);
+
+        // Turn it off.
+        output.blank(&mut self.canvas);
+    }
+
+    /// Keep showing the latest canvas until the matrix is dropped.
+    fn refresh_display(&mut self, output: &mut MatrixOutput) {
+        let mut last_gpio_inputs: u32 = 0;
+
+        // Dither sequence
+        let mut dither_low_bit_sequence = 0;
+        let dither_start_bits = match self.config.dither_bits {
+            0 => [0, 0, 0, 0],
+            1 => [0, 1, 0, 1],
+            2 => [0, 1, 2, 2],
+            _ => unreachable!("dither_bits is checked in RGBMatrixConfig::validate"),
+        };
+
+        let frame_time_target_us = (1_000_000.0 / self.config.refresh_rate as f64) as u64;
+
+        let mut suspended = false;
+
+        loop {
+            let start_time = output.gpio.get_time();
+            // Read input bits and send them if they have changed.
+            let new_inputs = output.gpio.read();
+            if new_inputs != last_gpio_inputs {
+                if self.input_sender.send(new_inputs).is_err() {
+                    return;
+                }
+                last_gpio_inputs = new_inputs;
+            }
+            // Check for a new message. While suspended, wait for one but keep polling the inputs.
+            let message = if suspended {
+                match self
+                    .message_receiver
+                    .recv_timeout(SUSPENDED_INPUT_POLL_INTERVAL)
+                {
+                    Ok(message) => Some(message),
+                    Err(RecvTimeoutError::Timeout) => None,
+                    Err(RecvTimeoutError::Disconnected) => return,
+                }
+            } else {
+                match self.message_receiver.try_recv() {
+                    Ok(message) => Some(message),
+                    Err(TryRecvError::Empty) => None,
+                    Err(TryRecvError::Disconnected) => return,
+                }
+            };
+            match message {
+                Some(ThreadMessage::Canvas(new_canvas)) => {
+                    let old_canvas = replace(&mut self.canvas, new_canvas);
+                    let Ok(()) = self.canvas_from_thread_sender.send(old_canvas) else {
+                        return;
+                    };
+                    suspended = false;
+                }
+                Some(ThreadMessage::Suspend) => {
+                    output.blank(&mut self.canvas);
+                    self.frame_rate_monitor.pause();
+                    suspended = true;
+                }
+                Some(ThreadMessage::Shutdown) => return,
+                None => {}
+            }
+            if suspended {
+                continue;
+            }
+
+            output.draw(
+                &self.canvas,
+                dither_start_bits[dither_low_bit_sequence % dither_start_bits.len()],
+            );
+            dither_low_bit_sequence += 1;
+
+            self.frame_rate_monitor.update();
+
+            // Sleep for the rest of the frame.
+            let now_time = output.gpio.get_time();
+            let end_time = start_time + frame_time_target_us;
+            if let Some(remaining_time) = end_time.checked_sub(now_time) {
+                output.gpio.sleep(remaining_time);
+            }
         }
     }
 }
@@ -240,17 +413,10 @@ impl RGBMatrix {
             .or_else(PiChip::determine)
             .ok_or(MatrixCreationError::ChipDeterminationError)?;
 
-        let dither_start_bits = match config.dither_bits {
-            0 => [0, 0, 0, 0],
-            1 => [0, 1, 0, 1],
-            2 => [0, 1, 2, 2],
-            _ => unreachable!("dither_bits is checked in RGBMatrixConfig::validate"),
-        };
-
         // Create two canvases, one for the display update thread and one for the user to modify. They will be
         // swapped out after each frame.
         let canvas = Canvas::new(&config, shared_mapper);
-        let mut thread_canvas = canvas.clone();
+        let thread_canvas = canvas.clone();
 
         let (message_sender, message_receiver) = sync_channel::<ThreadMessage>(0);
         let (canvas_from_thread_sender, canvas_from_thread_receiver) = sync_channel::<Canvas>(1);
@@ -258,135 +424,19 @@ impl RGBMatrix {
         let (thread_start_result_sender, thread_start_result_receiver) =
             channel::<Result<u32, MatrixCreationError>>();
         let framerate = Arc::new(AtomicU32::new(0));
-        let mut frame_rate_monitor = FrameRateMonitor::new(framerate.clone());
         let (brightness, pwm_bits) = (config.led_brightness, config.pwm_bits);
 
-        let thread_handle = spawn(move || {
-            initialize_update_thread(chip);
-
-            let mut address_setter = config.row_setter.create(&config);
-
-            let mut gpio = match Gpio::new(chip, &config, &address_setter) {
-                Ok(gpio) => gpio,
-                Err(error) => {
-                    // Fails only if the main thread stopped waiting, in which case there is no one to tell.
-                    thread_start_result_sender
-                        .send(Err(MatrixCreationError::GpioError(error)))
-                        .ok();
-                    return;
-                }
-            };
-
-            // Run the initialization sequence if necessary.
-            if let Some(panel_type) = config.panel_type {
-                panel_type.run_init_sequence(&mut gpio, &config);
-            }
-
-            let mut last_gpio_inputs: u32 = 0;
-
-            // Dither sequence
-            let mut dither_low_bit_sequence = 0;
-
-            let frame_time_target_us = (1_000_000.0 / config.refresh_rate as f64) as u64;
-
-            let color_clk_mask = config
-                .hardware_mapping
-                .get_color_clock_mask(config.parallel);
-
-            let enabled_input_bits = gpio.request_enabled_inputs(config.input_bits);
-            // The main thread stopped waiting and returned an error, so nobody will use the matrix.
-            if thread_start_result_sender
-                .send(Ok(enabled_input_bits))
-                .is_err()
-            {
-                return;
-            }
-
-            let mut suspended = false;
-
-            'thread: loop {
-                let start_time = gpio.get_time();
-                // Read input bits and send them if they have changed.
-                let new_inputs = gpio.read();
-                if new_inputs != last_gpio_inputs {
-                    if input_sender.send(new_inputs).is_err() {
-                        break 'thread;
-                    }
-                    last_gpio_inputs = new_inputs;
-                }
-                // Check for a new message. While suspended, wait for one but keep polling the inputs.
-                let message = if suspended {
-                    match message_receiver.recv_timeout(SUSPENDED_INPUT_POLL_INTERVAL) {
-                        Ok(message) => Some(message),
-                        Err(RecvTimeoutError::Timeout) => None,
-                        Err(RecvTimeoutError::Disconnected) => break 'thread,
-                    }
-                } else {
-                    match message_receiver.try_recv() {
-                        Ok(message) => Some(message),
-                        Err(TryRecvError::Empty) => None,
-                        Err(TryRecvError::Disconnected) => break 'thread,
-                    }
-                };
-                match message {
-                    Some(ThreadMessage::Canvas(new_canvas)) => {
-                        let old_canvas = replace(&mut thread_canvas, new_canvas);
-                        let Ok(()) = canvas_from_thread_sender.send(old_canvas) else {
-                            break 'thread;
-                        };
-                        suspended = false;
-                    }
-                    Some(ThreadMessage::Suspend) => {
-                        // Draw a blank frame so that no row stays lit, but keep the current canvas for
-                        // when the display is resumed.
-                        let mut blank_canvas = thread_canvas.clone();
-                        blank_canvas.fill(0, 0, 0);
-                        blank_canvas.dump_to_matrix(
-                            &mut gpio,
-                            &config.hardware_mapping,
-                            &mut address_setter,
-                            0,
-                            color_clk_mask,
-                        );
-                        frame_rate_monitor.pause();
-                        suspended = true;
-                    }
-                    Some(ThreadMessage::Shutdown) => break 'thread,
-                    None => {}
-                }
-                if suspended {
-                    continue;
-                }
-
-                thread_canvas.dump_to_matrix(
-                    &mut gpio,
-                    &config.hardware_mapping,
-                    &mut address_setter,
-                    dither_start_bits[dither_low_bit_sequence % dither_start_bits.len()],
-                    color_clk_mask,
-                );
-                dither_low_bit_sequence += 1;
-
-                frame_rate_monitor.update();
-
-                // Sleep for the rest of the frame.
-                let now_time = gpio.get_time();
-                let end_time = start_time + frame_time_target_us;
-                if let Some(remaining_time) = end_time.checked_sub(now_time) {
-                    gpio.sleep(remaining_time);
-                }
-            }
-
-            // Turn it off.
-            thread_canvas.fill(0, 0, 0);
-            thread_canvas.dump_to_matrix(
-                &mut gpio,
-                &config.hardware_mapping,
-                &mut address_setter,
-                0,
-                color_clk_mask,
-            );
-        });
+        let update_thread = UpdateThread {
+            chip,
+            config,
+            canvas: thread_canvas,
+            frame_rate_monitor: FrameRateMonitor::new(framerate.clone()),
+            message_receiver,
+            canvas_from_thread_sender,
+            input_sender,
+            thread_start_result_sender,
+        };
+        let thread_handle = spawn(move || update_thread.run());
 
         let enabled_input_bits =
             match thread_start_result_receiver.recv_timeout(Duration::from_secs(10)) {
