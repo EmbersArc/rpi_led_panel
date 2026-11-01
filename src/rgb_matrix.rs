@@ -150,11 +150,10 @@ impl UpdateThread {
             panel_type.run_init_sequence(&mut gpio, &self.config);
         }
 
-        let enabled_input_bits = gpio.request_enabled_inputs(self.config.input_bits);
         // The main thread stopped waiting and returned an error, so nobody will use the matrix.
         if self
             .thread_start_result_sender
-            .send(Ok(enabled_input_bits))
+            .send(Ok(gpio.input_bits()))
             .is_err()
         {
             return;
@@ -494,14 +493,13 @@ impl RGBMatrix {
 
         // Apply the mapping for the panels first.
         if let Some(mapper) = &multiplex_mapper {
-            shared_mapper = Self::apply_pixel_mapper(&shared_mapper, mapper, pixel_designator)?;
+            shared_mapper = Self::apply_pixel_mapper(&shared_mapper, mapper)?;
         }
 
         // Apply higher level mappers that might arrange panels.
         for mapper_type in config.pixelmapper.iter() {
             let mapper = mapper_type.create(config.chain_length, config.parallel)?;
-            shared_mapper =
-                Self::apply_pixel_mapper(&shared_mapper, mapper.as_ref(), pixel_designator)?;
+            shared_mapper = Self::apply_pixel_mapper(&shared_mapper, mapper.as_ref())?;
         }
 
         Ok(shared_mapper)
@@ -510,14 +508,16 @@ impl RGBMatrix {
     fn apply_pixel_mapper(
         shared_mapper: &PixelDesignatorMap,
         mapper: &dyn PixelMapper,
-        pixel_designator: PixelDesignator,
     ) -> Result<PixelDesignatorMap, MatrixCreationError> {
         let old_width = shared_mapper.width();
         let old_height = shared_mapper.height();
         let [new_width, new_height] = mapper.get_size_mapping(old_width, old_height)?;
         // Every pixel is copied from the old map below, so there is no need to compute the physical layout.
-        let mut new_mapper =
-            PixelDesignatorMap::new_unmapped(pixel_designator, new_width, new_height);
+        let mut new_mapper = PixelDesignatorMap::new_unmapped(
+            shared_mapper.get_pixel_designator(),
+            new_width,
+            new_height,
+        );
         for y in 0..new_height {
             for x in 0..new_width {
                 let [orig_x, orig_y] = mapper.map_visible_to_matrix(old_width, old_height, x, y);
@@ -742,8 +742,7 @@ mod tests {
             .create(4, 1)
             .unwrap();
 
-        let rotated =
-            RGBMatrix::apply_pixel_mapper(&map, mapper.as_ref(), pixel_designator).unwrap();
+        let rotated = RGBMatrix::apply_pixel_mapper(&map, mapper.as_ref()).unwrap();
 
         assert_eq!((rotated.width(), rotated.height()), (32, 256));
         assert_eq!(rotated.get(0, 0), map.get(255, 0));

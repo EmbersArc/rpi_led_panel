@@ -234,3 +234,14 @@ impl Default for RGBMatrixConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{FromArgs, RGBMatrixConfig};
+
+    #[test]
+    fn test_argument_defaults_match_default() {
+        let parsed = RGBMatrixConfig::from_args(&["test"], &[]).unwrap();
+        assert_eq!(parsed, RGBMatrixConfig::default());
+    }
+}

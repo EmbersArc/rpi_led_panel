@@ -1,8 +1,8 @@
-use std::{fs, io, rc::Rc, time};
+use std::{fs, io, rc::Rc};
 
 use memmap2::{MmapOptions, MmapRaw};
 
-use crate::{chip::PiChip, gpio_bits, utils::sleep_at_most};
+use crate::{chip::PiChip, gpio_bits};
 
 // See https://elinux.org/BCM2835_registers
 
@@ -38,27 +38,19 @@ const GP_CLR0: usize = 0x28;
 const GP_LEV0: usize = 0x34;
 
 struct GPIOFunctionSelectRegisters {
-    registers_by_function: [MmapPtr<u32>; 6],
+    /// Each register selects the functions of 10 pins.
+    registers: [MmapPtr<u32>; 6],
 }
 
 impl GPIOFunctionSelectRegisters {
     fn new(map: Rc<MmapRaw>, byte_offset: usize) -> Self {
-        let registers_by_function = [
-            MmapPtr::new(map.clone(), byte_offset),
-            MmapPtr::new(map.clone(), byte_offset + 4),
-            MmapPtr::new(map.clone(), byte_offset + 2 * 4),
-            MmapPtr::new(map.clone(), byte_offset + 3 * 4),
-            MmapPtr::new(map.clone(), byte_offset + 4 * 4),
-            MmapPtr::new(map, byte_offset + 5 * 4),
-        ];
-        Self {
-            registers_by_function,
-        }
+        let registers =
+            std::array::from_fn(|index| MmapPtr::new(map.clone(), byte_offset + index * 4));
+        Self { registers }
     }
 
     fn set_function(&mut self, pin: u8, function: GPIOFunction) {
-        let function_index = (pin / 10) as usize;
-        let register = &self.registers_by_function[function_index];
+        let register = &self.registers[(pin / 10) as usize];
         let shift = (pin % 10) * 3;
         let clear = !(0b111 << shift);
         let set = function.bits() << shift;
@@ -191,14 +183,6 @@ impl TimeRegisters {
             }
         }
     }
-
-    pub(crate) fn sleep(&mut self, duration_us: u64, min_sys_sleep_time: time::Duration) {
-        let end_time = self.get_time() + duration_us;
-        sleep_at_most(time::Duration::from_micros(duration_us), min_sys_sleep_time);
-        while self.get_time() < end_time {
-            std::hint::spin_loop();
-        }
-    }
 }
 
 // Pulse Width Modulator
@@ -211,13 +195,13 @@ const PWM_FIF1: usize = 0x18;
 const PWM_STA_EMPT1: u32 = 0x1 << 1;
 
 /// CH1 Enable (0=disable 1=enable)
-pub(crate) const PWM_CTL_PWEN1: u32 = 1 << 0;
+const PWM_CTL_PWEN1: u32 = 1 << 0;
 /// CH1 Polarity (0: 0=low 1=high, 1: 1=low 0=high)
-pub(crate) const PWM_CTL_POLA1: u32 = 1 << 4;
+const PWM_CTL_POLA1: u32 = 1 << 4;
 /// CH1 Use FIFO (0=data reg transmit 1=FIFO used for transmission)
-pub(crate) const PWM_CTL_USEF1: u32 = 1 << 5;
+const PWM_CTL_USEF1: u32 = 1 << 5;
 /// CH1 Clear FIFO (1 Clears FIFO 0 has no effect)
-pub(crate) const PWM_CTL_CLRF1: u32 = 1 << 6;
+const PWM_CTL_CLRF1: u32 = 1 << 6;
 
 pub(crate) struct PWMRegisters {
     ctl: MmapPtr<u32>,
@@ -251,7 +235,7 @@ impl PWMRegisters {
         self.set_pwm_ctl(PWM_CTL_USEF1 | PWM_CTL_POLA1 | PWM_CTL_CLRF1);
     }
 
-    pub(crate) fn set_pwm_ctl(&mut self, value: u32) {
+    fn set_pwm_ctl(&mut self, value: u32) {
         self.ctl.write(value);
     }
 
@@ -281,12 +265,6 @@ const CM_SRC_PLLD: u32 = 6; /* 500.0 MHz */
 /// Set the clock source.
 const fn cm_ctl_src(x: u32) -> u32 {
     // bits 3-0
-    let offset = 0;
-    x << offset
-}
-/// Fractional part of divider.
-const fn cm_div_divf(x: u32) -> u32 {
-    // bits 11-0
     let offset = 0;
     x << offset
 }
@@ -321,8 +299,7 @@ impl ClkRegisters {
         self.pwm_ctl.write(CM_PASSWD | cm_ctl_src(CM_SRC_PLLD));
 
         // set PWM clock divider
-        self.pwm_div
-            .write(CM_PASSWD | cm_div_divi(divider) | cm_div_divf(0));
+        self.pwm_div.write(CM_PASSWD | cm_div_divi(divider));
 
         // enable PWM clock
         self.pwm_ctl

@@ -175,7 +175,7 @@ impl PixelDesignatorMap {
         self.buffer.get_mut(position)
     }
 
-    fn get_pixel_designator(&self) -> PixelDesignator {
+    pub(crate) fn get_pixel_designator(&self) -> PixelDesignator {
         self.pixel_designator
     }
 
@@ -359,7 +359,7 @@ impl Canvas {
 }
 
 #[cfg(feature = "drawing")]
-pub mod embedded_graphics_support {
+mod embedded_graphics_support {
     use super::Canvas;
     use embedded_graphics::{
         Pixel,

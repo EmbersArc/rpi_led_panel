@@ -69,8 +69,6 @@ pub(crate) struct Gpio {
     time_registers: TimeRegisters,
     pin_pulser: PinPulser,
     input_bits: u32,
-    output_bits: u32,
-    reserved_bits: u32,
     gpio_slowdown: u32,
     min_sys_sleep_time: Duration,
 }
@@ -128,6 +126,10 @@ impl Gpio {
 
         gpio_registers.select_function_for_bits(output_bits, GPIOFunction::Output);
 
+        // Skip the requested inputs that are already used otherwise.
+        let input_bits = config.input_bits & !(output_bits | reserved_bits);
+        gpio_registers.select_function_for_bits(input_bits, GPIOFunction::Input);
+
         // Each bit plane is shown twice as long as the previous one, except for the dithered ones.
         let bitplane_timings: Vec<u32> = (0..K_BIT_PLANES)
             .map(|b| config.pwm_lsb_nanoseconds << b.saturating_sub(config.dither_bits))
@@ -150,9 +152,7 @@ impl Gpio {
             gpio_registers,
             time_registers,
             pin_pulser,
-            input_bits: 0,
-            output_bits,
-            reserved_bits,
+            input_bits,
             gpio_slowdown,
             min_sys_sleep_time,
         })
@@ -206,14 +206,9 @@ impl Gpio {
         }
     }
 
-    pub(crate) fn request_enabled_inputs(&mut self, mut enabled_bits: u32) -> u32 {
-        // Remove the bits that are already used otherwise.
-        enabled_bits &= !(self.output_bits | self.input_bits | self.reserved_bits);
-
-        self.gpio_registers
-            .select_function_for_bits(enabled_bits, GPIOFunction::Input);
-        self.input_bits |= enabled_bits;
-        enabled_bits
+    /// The requested inputs that were available.
+    pub(crate) fn input_bits(&self) -> u32 {
+        self.input_bits
     }
 
     pub(crate) fn read(&mut self) -> u32 {
@@ -226,8 +221,7 @@ impl Gpio {
     }
 
     /// Sleep for exactly this many microseconds.
-    pub(crate) fn sleep(&mut self, duration_us: u64) {
-        self.time_registers
-            .sleep(duration_us, self.min_sys_sleep_time);
+    pub(crate) fn sleep(&self, duration_us: u64) {
+        sleep_exactly(Duration::from_micros(duration_us), self.min_sys_sleep_time);
     }
 }

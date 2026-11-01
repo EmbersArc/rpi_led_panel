@@ -15,7 +15,7 @@ pub(crate) struct ColorBits {
 }
 
 impl ColorBits {
-    pub const fn unused() -> Self {
+    pub(crate) const fn unused() -> Self {
         Self {
             r1: 0,
             g1: 0,
