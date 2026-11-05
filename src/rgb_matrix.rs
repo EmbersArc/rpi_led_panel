@@ -25,6 +25,7 @@ use crate::{
     chip::PiChip,
     gpio::{Gpio, GpioInitializationError},
     hardware_mapping::HardwareMapping,
+    inputs::{InputReader, InputWriter, input_channel},
     multiplex_mapper::{MultiplexMapper, MultiplexMapperType},
     pixel_mapper::PixelMapper,
     row_address_setter::RowAddressSetter,
@@ -121,7 +122,7 @@ struct UpdateThread {
     frame_rate_monitor: FrameRateMonitor,
     message_receiver: Receiver<ThreadMessage>,
     canvas_from_thread_sender: SyncSender<Canvas>,
-    input_sender: Sender<u32>,
+    inputs: InputWriter,
     thread_start_result_sender: Sender<Result<u32, MatrixCreationError>>,
 }
 
@@ -146,6 +147,7 @@ impl UpdateThread {
         if let Some(panel_type) = self.config.panel_type {
             panel_type.run_init_sequence(&mut gpio, &self.config);
         }
+        self.inputs.set_initial(gpio.read());
 
         // The main thread stopped waiting and returned an error, so nobody will use the matrix.
         if self
@@ -175,8 +177,6 @@ impl UpdateThread {
 
     /// Keep showing the latest canvas until the matrix is dropped.
     fn refresh_display(&mut self, output: &mut MatrixOutput) {
-        let mut last_gpio_inputs: u32 = 0;
-
         // Dither sequence
         let mut dither_low_bit_sequence = 0;
         let dither_start_bits = match self.config.dither_bits {
@@ -192,14 +192,7 @@ impl UpdateThread {
 
         loop {
             let start_time = output.gpio.time();
-            // Read input bits and send them if they have changed.
-            let new_inputs = output.gpio.read();
-            if new_inputs != last_gpio_inputs {
-                if self.input_sender.send(new_inputs).is_err() {
-                    return;
-                }
-                last_gpio_inputs = new_inputs;
-            }
+            self.inputs.update(output.gpio.read());
             // Check for a new message. While suspended, wait for one but keep polling the inputs.
             let message = if suspended {
                 match self
@@ -332,7 +325,7 @@ impl Display for MatrixCreationError {
 
 /// The display update thread stopped while the matrix was in use, which only happens if it panicked.
 #[derive(Debug, Clone)]
-pub struct UpdateThreadError(String);
+pub struct UpdateThreadError(pub(crate) String);
 
 impl Error for UpdateThreadError {}
 
@@ -353,8 +346,8 @@ pub struct RGBMatrix {
     thread_handle: Option<JoinHandle<()>>,
     /// Why the update thread stopped, once it did.
     thread_error: Option<UpdateThreadError>,
-    /// Receiver for GPIO inputs.
-    input_receiver: Receiver<u32>,
+    /// Reader for GPIO inputs, until it is taken.
+    input_reader: Option<InputReader>,
     /// Channel to send canvases and control messages to the update thread.
     message_sender: SyncSender<ThreadMessage>,
     /// Channel to receive canvas from update thread.
@@ -388,7 +381,7 @@ impl RGBMatrix {
     /// controller and a canvas for drawing.
     ///
     /// You can additionally request user readable GPIO bits with [`RGBMatrixConfig::input_bits`], which can
-    /// later be received with [`RGBMatrix::receive_new_inputs`]. Only bits that are not already in use for
+    /// later be read with [`RGBMatrix::take_input_reader`]. Only bits that are not already in use for
     /// reading or writing by the matrix are allowed. Use [`RGBMatrix::enabled_input_bits`] after calling this
     /// function to check which bits were actually available.
     ///
@@ -416,7 +409,7 @@ impl RGBMatrix {
 
         let (message_sender, message_receiver) = sync_channel::<ThreadMessage>(0);
         let (canvas_from_thread_sender, canvas_from_thread_receiver) = sync_channel::<Canvas>(1);
-        let (input_sender, input_receiver) = channel::<u32>();
+        let (input_writer, input_reader) = input_channel();
         let (thread_start_result_sender, thread_start_result_receiver) =
             channel::<Result<u32, MatrixCreationError>>();
         let framerate = Arc::new(AtomicU32::new(0));
@@ -429,7 +422,7 @@ impl RGBMatrix {
             frame_rate_monitor: FrameRateMonitor::new(framerate.clone()),
             message_receiver,
             canvas_from_thread_sender,
-            input_sender,
+            inputs: input_writer,
             thread_start_result_sender,
         };
         let thread_handle = spawn(move || update_thread.run());
@@ -451,7 +444,7 @@ impl RGBMatrix {
         let rgbmatrix = Self {
             thread_handle: Some(thread_handle),
             thread_error: None,
-            input_receiver,
+            input_reader: Some(input_reader),
             message_sender,
             canvas_from_thread_receiver,
             enabled_input_bits,
@@ -606,17 +599,10 @@ impl RGBMatrix {
         self.enabled_input_bits
     }
 
-    /// Tries to receive a new GPIO input as requested with [`RGBMatrixConfig::input_bits`].
-    /// Returns `None` if the inputs didn't change before the timeout.
-    pub fn receive_new_inputs(
-        &mut self,
-        timeout: Duration,
-    ) -> Result<Option<u32>, UpdateThreadError> {
-        match self.input_receiver.recv_timeout(timeout) {
-            Ok(inputs) => Ok(Some(inputs)),
-            Err(RecvTimeoutError::Timeout) => Ok(None),
-            Err(RecvTimeoutError::Disconnected) => Err(self.update_thread_error()),
-        }
+    /// Take the reader for the GPIO inputs requested with [`RGBMatrixConfig::input_bits`]. There is only one,
+    /// so this returns `None` after the first call.
+    pub fn take_input_reader(&mut self) -> Option<InputReader> {
+        self.input_reader.take()
     }
 
     /// Get the average frame rate over the last 60 frames.
@@ -644,7 +630,6 @@ mod tests {
         sync::Arc,
         sync::mpsc::{channel, sync_channel},
         thread::spawn,
-        time::Duration,
     };
 
     use strum::VariantNames;
@@ -692,12 +677,10 @@ mod tests {
     }
 
     #[test]
-    fn test_receive_inputs_after_panic() {
-        // A stand-in for the update thread that sends one input and panics when told to.
-        let (input_sender, input_receiver) = channel();
+    fn test_update_thread_error_after_panic() {
+        // A stand-in for the update thread that panics when told to.
         let (panic_sender, panic_receiver) = channel();
         let thread_handle = spawn(move || {
-            input_sender.send(1).unwrap();
             panic_receiver.recv().unwrap();
             panic!("update failed");
         });
@@ -706,21 +689,18 @@ mod tests {
         let mut matrix = RGBMatrix {
             thread_handle: Some(thread_handle),
             thread_error: None,
-            input_receiver,
+            input_reader: None,
             message_sender,
             canvas_from_thread_receiver,
-            enabled_input_bits: 1,
+            enabled_input_bits: 0,
             framerate: Arc::default(),
             suspended: false,
             brightness: 100,
             pwm_bits: 11,
         };
-        let timeout = Duration::from_millis(10);
 
-        assert_eq!(matrix.receive_new_inputs(timeout).unwrap(), Some(1));
-        assert_eq!(matrix.receive_new_inputs(timeout).unwrap(), None);
         panic_sender.send(()).unwrap();
-        let error = matrix.receive_new_inputs(timeout).unwrap_err();
+        let error = matrix.update_thread_error();
         assert!(error.to_string().ends_with("update failed"), "{error}");
     }
 

@@ -43,7 +43,7 @@
 ### Breaking
 
 - `update_on_vsync` returns a `Result` with an `UpdateThreadError` instead of panicking when the update thread shuts down unexpectedly.
-- `receive_new_inputs` returns a `Result<Option<u32>, UpdateThreadError>`. An unexpected shutdown of the update thread is now an error instead of `None`.
+- Replace `RGBMatrix::receive_new_inputs` with an `InputReader` from `RGBMatrix::take_input_reader`, which can be moved to another thread.
 - Move `set_brightness` and `set_pwm_bits` from `Canvas` to `RGBMatrix`. On the canvas they only applied to every other frame.
 - Parsing a `HardwareMapping` returns an `InvalidVariantError` and parsing a `NamedPixelMapperType` returns the new `InvalidPixelMapperError`.
 - Rename `RGBMatrix::get_framerate` to `RGBMatrix::framerate`.
