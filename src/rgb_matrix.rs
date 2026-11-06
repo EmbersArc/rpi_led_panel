@@ -49,7 +49,7 @@ fn initialize_update_thread(chip: PiChip, realtime_priority: Option<u8>) {
         warn!("Could not pin the display update thread to core {last_core_id}.");
     }
 
-    // If the user has not setup isolcpus, let them know about the performance improvement.
+    // If the user has not set up isolcpus, let them know about the performance improvement.
     if chip.num_cores() > 1 && !linux_has_isol_cpu(last_core_id) {
         warn!(
             "Suggestion: to slightly improve display update, add\n\tisolcpus={last_core_id}\nat \
