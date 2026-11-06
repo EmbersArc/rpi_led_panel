@@ -19,9 +19,11 @@ Ported from the upstream C++ library:
 - `Canvas::set_pixels`, `Canvas::sub_fill`, `Canvas::serialize`, `Canvas::deserialize`, `Canvas::copy_from` and
   `Canvas::set_luminance_correct`. Solid fills with embedded-graphics use `sub_fill`.
 - `FM6126A` as a name for the `FM6126` panel type.
+- The options `realtime_priority` (run the update thread with `SCHED_FIFO`, off by default), `uncapped_refresh_rate`, `clear_on_vsync` and `input_bits`, and `RGBMatrix::try_request_outputs`.
 
 Merged from upstream:
 
+- `InputReader` and `InputChange` to read the GPIO inputs from any thread, through `RGBMatrix::take_input_reader`.
 - `RGBMatrix::suspend`/`RGBMatrix::is_suspended` to clear the display and pause the update thread until the next `update_on_vsync`.
 - The `min_sys_sleep_microseconds` option to tune how early sleeps wake up.
 - Export the `GpioInitializationError`, `InvalidVariantError`, `InvalidPixelMapperError` and `UpdateThreadError` types, and `Rotation` and `MirrorDirection`. `MatrixCreationError` and `GpioInitializationError` are `#[non_exhaustive]`.
@@ -68,13 +70,12 @@ Merged from upstream:
 - Declare 1.88 as the minimum supported Rust version.
 - Updated dependencies.
 - Share the pixel map and color lookup table between canvases and shrink the pixel map entries.
-- Leave a margin for the OS sleep jitter and busy-wait the rest, to avoid overshooting.
 
 ### Breaking
 
 - `RGBMatrix::new` returns a `Canvas` instead of a `Box<Canvas>`, and `RGBMatrix::update_on_vsync` and `RGBMatrix::update_on_vsync_every` take and return a `Canvas`, so `canvas.as_mut()` becomes `&mut canvas` when drawing.
 - `update_on_vsync` and `update_on_vsync_every` return a `Result` with an `UpdateThreadError` instead of panicking when the update thread shuts down unexpectedly. This replaces `try_update_on_vsync`, `try_update_on_vsync_every` and `MatrixUpdateError`.
-- Move `set_brightness` and `set_pwm_bits` from `Canvas` to `RGBMatrix`. On the canvas they only applied to every other frame.
+- Move `set_brightness` and `set_pwm_bits` from `Canvas` to `RGBMatrix`, where `RGBMatrix::brightness` and `RGBMatrix::pwm_bits` read them back. `Canvas::brightness` and `Canvas::pwm_bits` are gone. On the canvas the setters only applied to every other frame.
 - Replace `RGBMatrix::receive_new_inputs` with an `InputReader` from `RGBMatrix::take_input_reader`, which can be moved to another thread.
 - Rename `RGBMatrix::get_framerate` to `RGBMatrix::framerate`.
 - `RGBMatrix::new` no longer takes the `requested_inputs` argument. Use the new `input_bits` option of `RGBMatrixConfig` instead, also available as `--input-bits`.

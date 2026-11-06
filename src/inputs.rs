@@ -120,7 +120,7 @@ impl InputReader {
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
                     .clone()
-                    .unwrap_or_else(|| "the matrix was dropped or the thread panicked".to_string());
+                    .unwrap_or_else(|| "it exited or panicked, or the matrix was dropped".to_string());
                 Err(UpdateThreadError(reason))
             }
         }
