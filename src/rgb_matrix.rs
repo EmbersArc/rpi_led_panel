@@ -7,7 +7,7 @@ use std::{
     mem::replace,
     sync::atomic::{AtomicU32, Ordering},
     sync::mpsc::{
-        Receiver, RecvTimeoutError, Sender, SyncSender, TryRecvError, TrySendError, channel,
+        Receiver, RecvTimeoutError, Sender, SyncSender, TryRecvError, channel,
         sync_channel,
     },
     sync::{Arc, Mutex},
@@ -24,8 +24,9 @@ use crate::{
     backend::Backend,
     canvas::{Canvas, PixelDesignator, PixelDesignatorMap},
     chip::PiChip,
-    config::{K_BIT_PLANES, MAX_REFRESH_RATE},
+    config::{BIT_PLANES, MAX_REFRESH_RATE},
     gpio::GpioInitializationError,
+    inputs::{InputReader, input_channel},
     named_pixel_mapper::MappingDirection,
     pin_pulser::uses_hardware_pulse,
     pixel_mapper::PixelMapper,
@@ -34,9 +35,6 @@ use crate::{
     rp1::is_pi5_model,
     utils::{FrameRateMonitor, linux_has_isol_cpu, set_thread_affinity, sleep_at_most},
 };
-
-/// How many input changes are kept until they are received.
-const INPUT_QUEUE_LENGTH: usize = 256;
 
 /// How often GPIO inputs and requests are polled while the display is suspended.
 const SUSPENDED_POLL_INTERVAL: Duration = Duration::from_millis(10);
@@ -179,7 +177,7 @@ impl Display for MatrixCreationError {
 /// The display update thread stopped while the matrix was in use, e.g. because it panicked or the Raspberry Pi 5
 /// PIO driver failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UpdateThreadError(String);
+pub struct UpdateThreadError(pub(crate) String);
 
 impl Error for UpdateThreadError {}
 
@@ -218,8 +216,8 @@ pub struct RGBMatrix {
     thread_handle: Option<JoinHandle<()>>,
     /// Requests to the update thread.
     control_sender: Sender<Control>,
-    /// Receiver for GPIO inputs.
-    input_receiver: Receiver<u32>,
+    /// Reader for GPIO inputs, until it is taken with [`RGBMatrix::take_input_reader`].
+    input_reader: Option<InputReader>,
     /// Channel to send canvas to update thread, with the number of frames to show the previous canvas for.
     canvas_to_thread_sender: SyncSender<(Canvas, u32)>,
     /// Channel to receive canvas from update thread.
@@ -261,7 +259,7 @@ impl RGBMatrix {
     /// controller and a canvas for drawing.
     ///
     /// You can additionally request user readable GPIO bits with [`RGBMatrixConfig::input_bits`], which can
-    /// later be received with [`RGBMatrix::receive_new_inputs`]. Only bits that are not already in use for
+    /// later be read with [`RGBMatrix::take_input_reader`]. Only bits that are not already in use for
     /// reading or writing by the matrix are allowed. Use [`RGBMatrix::enabled_input_bits`] after calling this
     /// function to check which bits were actually available. GPIO inputs are not supported on the Raspberry
     /// Pi 5.
@@ -304,7 +302,7 @@ impl RGBMatrix {
         let (canvas_to_thread_sender, canvas_to_thread_receiver) = sync_channel::<(Canvas, u32)>(0);
         let (canvas_from_thread_sender, canvas_from_thread_receiver) = sync_channel::<Canvas>(1);
         let (control_sender, control_receiver) = channel::<Control>();
-        let (input_sender, input_receiver) = sync_channel::<u32>(INPUT_QUEUE_LENGTH);
+        let (mut input_writer, input_reader) = input_channel();
         let (thread_start_result_sender, thread_start_result_receiver) =
             channel::<Result<u32, MatrixCreationError>>();
         let framerate = Arc::new(AtomicU32::new(0));
@@ -335,8 +333,6 @@ impl RGBMatrix {
                     return;
                 }
 
-                let mut last_gpio_inputs: u32 = 0;
-
                 // Dither sequence
                 let mut dither_low_bit_sequence = 0;
 
@@ -352,6 +348,7 @@ impl RGBMatrix {
                 let mut refresh_display = config.show_refresh.then(RefreshRateDisplay::new);
 
                 let enabled_input_bits = backend.request_inputs(config.input_bits);
+                input_writer.set_initial(backend.read_inputs());
                 if thread_start_result_sender
                     .send(Ok(enabled_input_bits))
                     .is_err()
@@ -388,16 +385,8 @@ impl RGBMatrix {
                             Err(TryRecvError::Empty) => break,
                         }
                     }
-                    // Read input bits and send them if they have changed.
-                    let new_inputs = backend.read_inputs();
-                    if new_inputs != last_gpio_inputs {
-                        match input_sender.try_send(new_inputs) {
-                            Ok(()) => last_gpio_inputs = new_inputs,
-                            // Nobody is receiving the inputs. Try again in the next frame.
-                            Err(TrySendError::Full(_)) => {}
-                            Err(TrySendError::Disconnected(_)) => break 'thread,
-                        }
-                    }
+                    // Read input bits and publish them if they have changed.
+                    input_writer.update(backend.read_inputs());
                     // Check for a swap canvas. While suspended, wait for one but keep polling the inputs.
                     if next_canvas.is_none() {
                         let received = if suspended {
@@ -501,7 +490,7 @@ impl RGBMatrix {
         let rgbmatrix = Self {
             thread_handle: Some(thread_handle),
             control_sender,
-            input_receiver,
+            input_reader: Some(input_reader),
             canvas_to_thread_sender,
             canvas_from_thread_receiver,
             enabled_input_bits,
@@ -587,14 +576,14 @@ impl RGBMatrix {
                 config.dither_bits
             ));
         }
-        if !(1..=K_BIT_PLANES).contains(&config.pwm_bits) {
+        if !(1..=BIT_PLANES).contains(&config.pwm_bits) {
             return invalid(format!(
-                "pwm_bits must be between 1 and {K_BIT_PLANES}, got {}.",
+                "pwm_bits must be between 1 and {BIT_PLANES}, got {}.",
                 config.pwm_bits
             ));
         }
         // The on-time doubles for each of the bit planes after the lowest, which must not overflow.
-        let max_lsb_nanoseconds = u32::MAX >> (K_BIT_PLANES - 1);
+        let max_lsb_nanoseconds = u32::MAX >> (BIT_PLANES - 1);
         if !(1..=max_lsb_nanoseconds).contains(&config.pwm_lsb_nanoseconds) {
             return invalid(format!(
                 "pwm_lsb_nanoseconds must be between 1 and {max_lsb_nanoseconds}, got {}.",
@@ -671,7 +660,7 @@ impl RGBMatrix {
     ) -> Result<PixelDesignatorMap, MatrixCreationError> {
         let old_width = shared_mapper.width();
         let old_height = shared_mapper.height();
-        let [new_width, new_height] = mapper.get_size_mapping(old_width, old_height)?;
+        let [new_width, new_height] = mapper.size_mapping(old_width, old_height)?;
         if new_width == 0 || new_height == 0 {
             return Err(MatrixCreationError::PixelMapperError(format!(
                 "The pixel mapper turns the {old_width}x{old_height} matrix into an empty canvas."
@@ -820,17 +809,10 @@ impl RGBMatrix {
         self.enabled_input_bits
     }
 
-    /// Tries to receive a new GPIO input as requested with [`RGBMatrixConfig::input_bits`].
-    /// Returns `None` if the inputs didn't change before the timeout.
-    pub fn receive_new_inputs(
-        &mut self,
-        timeout: Duration,
-    ) -> Result<Option<u32>, UpdateThreadError> {
-        match self.input_receiver.recv_timeout(timeout) {
-            Ok(inputs) => Ok(Some(inputs)),
-            Err(RecvTimeoutError::Timeout) => Ok(None),
-            Err(RecvTimeoutError::Disconnected) => Err(self.update_thread_error()),
-        }
+    /// Takes the reader for the GPIO inputs requested with [`RGBMatrixConfig::input_bits`]. The reader can be
+    /// moved to another thread. Returns `None` if it was already taken.
+    pub fn take_input_reader(&mut self) -> Option<InputReader> {
+        self.input_reader.take()
     }
 
     /// Turns GPIO pins that are not used by the matrix into outputs, which can be set with

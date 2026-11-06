@@ -141,7 +141,7 @@ impl MultiplexMapper {
         Ok(())
     }
 
-    pub(crate) fn get_size_mapping(
+    pub(crate) fn size_mapping(
         &self,
         matrix_width: usize,
         matrix_height: usize,
@@ -544,7 +544,7 @@ mod tests {
         mapper.edit_rows_cols(&mut rows, &mut cols).unwrap();
         assert_eq!((rows, cols), (8, 128));
         // The panel only uses the upper data lines, so the canvas is as tall as the panel.
-        assert_eq!(mapper.get_size_mapping(128, 8).unwrap(), [32, 16]);
+        assert_eq!(mapper.size_mapping(128, 8).unwrap(), [32, 16]);
         // The panel of the second parallel chain starts after the 8 rows of the first chain.
         assert_eq!(mapper.map_visible_to_matrix(128, 16, 0, 16), Some([24, 8]));
         assert_eq!(mapper.map_visible_to_matrix(128, 8, 0, 0), Some([24, 0]));

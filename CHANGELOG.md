@@ -76,7 +76,8 @@ Merged from upstream:
 
 - `RGBMatrix::new` returns a `Canvas` instead of a `Box<Canvas>`, and `RGBMatrix::update_on_vsync` and `RGBMatrix::update_on_vsync_every` take and return a `Canvas`, so `canvas.as_mut()` becomes `&mut canvas` when drawing.
 - `update_on_vsync` and `update_on_vsync_every` return a `Result` with an `UpdateThreadError` instead of panicking when the update thread shuts down unexpectedly. This replaces `try_update_on_vsync`, `try_update_on_vsync_every` and `MatrixUpdateError`.
-- `receive_new_inputs` returns a `Result<Option<u32>, UpdateThreadError>`. An unexpected shutdown of the update thread is now an error instead of `None`.
+- Replace `RGBMatrix::receive_new_inputs` with an `InputReader` from `RGBMatrix::take_input_reader`, which can be moved to another thread.
+- Move `set_brightness` and `set_pwm_bits` from `Canvas` to `RGBMatrix`. On the canvas they only applied to every other frame.
 - Rename `RGBMatrix::get_framerate` to `RGBMatrix::framerate`.
 - `RGBMatrix::new` no longer takes the `requested_inputs` argument. Use the new `input_bits` option of `RGBMatrixConfig` instead, also available as `--input-bits`.
 - `MatrixCreationError::MemoryAccessError` holds the `io::Error`. The variants `TooManyParallelChains` and `InvalidDitherBits` are gone, as `InvalidConfig` reports them.

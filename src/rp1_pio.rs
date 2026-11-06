@@ -14,7 +14,7 @@ use std::{
 use crate::{
     RGBMatrixConfig,
     canvas::Canvas,
-    config::K_BIT_PLANES,
+    config::BIT_PLANES,
     hardware_mapping::low_pins,
     init_sequence::PanelInit,
     rgb_matrix::MatrixCreationError,
@@ -205,7 +205,7 @@ pub(crate) struct Rp1Pio {
     device: File,
     sm: u16,
     layout: Rp1Layout,
-    active_words: [usize; K_BIT_PLANES],
+    active_words: [usize; BIT_PLANES],
     buffer: Vec<u32>,
 }
 
@@ -403,7 +403,7 @@ impl Rp1Pio {
 /// Fills the command buffer for one frame.
 fn build_frame(
     layout: &Rp1Layout,
-    active_words: &[usize; K_BIT_PLANES],
+    active_words: &[usize; BIT_PLANES],
     canvas: &Canvas,
     pwm_low_bit: usize,
     buffer: &mut Vec<u32>,
@@ -418,7 +418,7 @@ fn build_frame(
     let uses_shift_register = layout.uses_shift_register();
     let shifts_every_bitplane = layout.shifts_every_bitplane();
     buffer.clear();
-    buffer.reserve(double_rows * (K_BIT_PLANES - start_bit) * (canvas.columns() + 8) + 8);
+    buffer.reserve(double_rows * (BIT_PLANES - start_bit) * (canvas.columns() + 8) + 8);
 
     let mut previous_addr = layout.row_address_bits(canvas.display_row(double_rows - 1));
     let mut previous_active_words = 0;
@@ -563,7 +563,7 @@ mod tests {
 mod frame_tests {
     use super::{COMMAND_DATA, build_frame};
     use crate::{
-        config::K_BIT_PLANES,
+        config::BIT_PLANES,
         rp1::{self, Rp1Layout},
         rp1_rio,
     };
@@ -575,7 +575,7 @@ mod frame_tests {
         let (oe, strobe, a, r1, b2) = (h.oe, h.strobe, h.a, h.r1, h.b2);
         let layout = Rp1Layout::new(&config, false).unwrap();
         let mut buffer = Vec::new();
-        build_frame(&layout, &[3; K_BIT_PLANES], &canvas, 0, &mut buffer);
+        build_frame(&layout, &[3; BIT_PLANES], &canvas, 0, &mut buffer);
         assert_eq!(
             buffer,
             [

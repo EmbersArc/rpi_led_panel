@@ -10,7 +10,7 @@ use crate::error::InvalidVariantError;
 )]
 #[non_exhaustive]
 pub enum PiChip {
-    /// Model 0 and 1
+    /// Models 0 and 1
     #[strum(serialize = "BCM2708", serialize = "BCM2835")]
     BCM2708,
     /// Models 2 and 3

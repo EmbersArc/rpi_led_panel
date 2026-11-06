@@ -16,14 +16,14 @@ impl PixelMapper {
     /// visible (width, height) after the mapping.
     /// E.g. a 90 degree rotation might map matrix=(64, 32) -> visible=(32, 64)
     /// Some multiplexing matrices will double the height and half the width.
-    pub(crate) fn get_size_mapping(
+    pub(crate) fn size_mapping(
         &self,
         matrix_width: usize,
         matrix_height: usize,
     ) -> Result<[usize; 2], MatrixCreationError> {
         match self {
-            PixelMapper::Multiplex(mapper) => mapper.get_size_mapping(matrix_width, matrix_height),
-            PixelMapper::Named(mapper) => mapper.get_size_mapping(matrix_width, matrix_height),
+            PixelMapper::Multiplex(mapper) => mapper.size_mapping(matrix_width, matrix_height),
+            PixelMapper::Named(mapper) => mapper.size_mapping(matrix_width, matrix_height),
         }
     }
 

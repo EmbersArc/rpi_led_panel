@@ -309,7 +309,7 @@ impl TimeRegisters {
 
     /// Time in microseconds from the free running 64 bit system timer.
     #[inline]
-    pub(crate) fn get_time(&self) -> u64 {
+    pub(crate) fn time(&self) -> u64 {
         // The two halves can't be read at once. If the low half overflowed in between the reads, the high half
         // changes and we read again.
         loop {

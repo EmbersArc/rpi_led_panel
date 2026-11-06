@@ -5,7 +5,7 @@ use crate::{
     RGBMatrixConfig,
     canvas::Canvas,
     chip::PiChip,
-    config::K_BIT_PLANES,
+    config::BIT_PLANES,
     gpio::Gpio,
     hardware_mapping::{GpioBits, HardwareMapping, from_low_pins, low_pins},
     init_sequence::PanelInit,
@@ -120,7 +120,7 @@ impl BcmBackend {
             hardware_mapping: config.hardware_mapping,
             color_clk_mask: config
                 .hardware_mapping
-                .get_color_clock_mask(config.parallel),
+                .color_clock_mask(config.parallel),
         })
     }
 
@@ -151,7 +151,7 @@ impl BcmBackend {
 
             // Rows can't be switched very quickly without ghosting, so we do the
             // full PWM of one row before switching rows.
-            for b in start_bit..K_BIT_PLANES {
+            for b in start_bit..BIT_PLANES {
                 // While the output enable is still on, we can already clock in the next data.
                 let row = canvas.row_at(d_row, 0, b);
                 row.iter().for_each(|col| {
