@@ -86,7 +86,7 @@ impl Gpio {
     pub(crate) fn new(
         chip: PiChip,
         config: &RGBMatrixConfig,
-        address_setter: &dyn RowAddressSetter,
+        address_setter: &RowAddressSetter,
     ) -> Result<Self, MatrixCreationError> {
         let hardware_pulse = uses_hardware_pulse(config);
         // The sound driver uses the PWM peripheral, which is only a problem if we use it as well.

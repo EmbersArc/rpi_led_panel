@@ -104,7 +104,7 @@ impl Backend {
 /// Drives the panels with the GPIO peripherals of the BCM283x and BCM2711.
 pub(crate) struct BcmBackend {
     gpio: Gpio,
-    row_setter: Box<dyn RowAddressSetter>,
+    row_setter: RowAddressSetter,
     hardware_mapping: HardwareMapping,
     /// Mask of bits while clocking in.
     color_clk_mask: GpioBits,
@@ -113,7 +113,7 @@ pub(crate) struct BcmBackend {
 impl BcmBackend {
     fn new(chip: PiChip, config: &RGBMatrixConfig) -> Result<Self, MatrixCreationError> {
         let row_setter = config.row_setter.create(config);
-        let gpio = Gpio::new(chip, config, row_setter.as_ref())?;
+        let gpio = Gpio::new(chip, config, &row_setter)?;
         Ok(Self {
             gpio,
             row_setter,
