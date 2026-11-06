@@ -308,12 +308,12 @@ impl RGBMatrix {
         let (canvas_to_thread_sender, canvas_to_thread_receiver) = sync_channel::<(Canvas, u32)>(0);
         let (canvas_from_thread_sender, canvas_from_thread_receiver) = sync_channel::<Canvas>(1);
         let (control_sender, control_receiver) = channel::<Control>();
-        let (mut input_writer, input_reader) = input_channel();
+        let thread_error = Arc::new(Mutex::new(None));
+        let (mut input_writer, input_reader) = input_channel(Arc::clone(&thread_error));
         let (thread_start_result_sender, thread_start_result_receiver) =
             channel::<Result<u32, MatrixCreationError>>();
         let framerate = Arc::new(AtomicU32::new(0));
         let mut frame_rate_monitor = FrameRateMonitor::new(framerate.clone());
-        let thread_error = Arc::new(Mutex::new(None));
         let thread_error_sender = Arc::clone(&thread_error);
         let clear_on_vsync = config.clear_on_vsync;
         let (brightness, pwm_bits) = (config.led_brightness, config.pwm_bits);

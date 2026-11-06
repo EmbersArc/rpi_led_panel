@@ -58,7 +58,7 @@ impl LedSequence {
     }
 
     /// Returns the GPIO bits that drive `color`: the input at the position of `color` in the sequence.
-    fn get_gpio(
+    fn channel_bits(
         self,
         color: Color,
         red_bits: GpioBits,
@@ -96,9 +96,9 @@ impl PixelDesignator {
         let b = h.panels.blue_bits();
         Self {
             gpio_word: UNUSED_PIXEL,
-            r_bit: sequence.get_gpio(Color::Red, r, g, b),
-            g_bit: sequence.get_gpio(Color::Green, r, g, b),
-            b_bit: sequence.get_gpio(Color::Blue, r, g, b),
+            r_bit: sequence.channel_bits(Color::Red, r, g, b),
+            g_bit: sequence.channel_bits(Color::Green, r, g, b),
+            b_bit: sequence.channel_bits(Color::Blue, r, g, b),
             mask: !0,
         }
     }
@@ -143,9 +143,9 @@ impl PixelDesignatorMap {
                     (color_bits.r2, color_bits.g2, color_bits.b2)
                 };
 
-                d.r_bit = config.led_sequence.get_gpio(Color::Red, r, g, b);
-                d.g_bit = config.led_sequence.get_gpio(Color::Green, r, g, b);
-                d.b_bit = config.led_sequence.get_gpio(Color::Blue, r, g, b);
+                d.r_bit = config.led_sequence.channel_bits(Color::Red, r, g, b);
+                d.g_bit = config.led_sequence.channel_bits(Color::Green, r, g, b);
+                d.b_bit = config.led_sequence.channel_bits(Color::Blue, r, g, b);
                 d.mask = !(d.r_bit | d.g_bit | d.b_bit);
             }
         }
@@ -641,7 +641,7 @@ mod tests {
         // Upstream drives each color on the input at the color's position in the sequence.
         let (r, g, b) = (1, 2, 4);
         let bits = |seq: LedSequence| {
-            [Color::Red, Color::Green, Color::Blue].map(|color| seq.get_gpio(color, r, g, b))
+            [Color::Red, Color::Green, Color::Blue].map(|color| seq.channel_bits(color, r, g, b))
         };
         assert_eq!(bits(LedSequence::Rgb), [r, g, b]);
         assert_eq!(bits(LedSequence::Gbr), [b, r, g]);

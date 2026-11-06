@@ -1,8 +1,9 @@
 use std::{
     sync::{
         Arc,
-        atomic::{AtomicU32, Ordering::Relaxed},
+        atomic::{AtomicU32, Ordering::{Acquire, Relaxed, Release}},
         mpsc::{Receiver, RecvTimeoutError, SyncSender, sync_channel},
+        Mutex,
     },
     time::Duration,
 };
@@ -46,10 +47,14 @@ pub(crate) struct InputWriter {
 #[derive(Debug)]
 pub struct InputReader {
     shared: Arc<SharedInputs>,
+    /// Why the update thread stopped, if it recorded a reason.
+    thread_error: Arc<Mutex<Option<String>>>,
     wake_receiver: Receiver<()>,
 }
 
-pub(crate) fn input_channel() -> (InputWriter, InputReader) {
+pub(crate) fn input_channel(
+    thread_error: Arc<Mutex<Option<String>>>,
+) -> (InputWriter, InputReader) {
     let shared = Arc::new(SharedInputs::default());
     let (wake_sender, wake_receiver) = sync_channel(1);
     let writer = InputWriter {
@@ -61,6 +66,7 @@ pub(crate) fn input_channel() -> (InputWriter, InputReader) {
         writer,
         InputReader {
             shared,
+            thread_error,
             wake_receiver,
         },
     )
@@ -80,8 +86,9 @@ impl InputWriter {
         }
         self.last_state = state;
         self.shared.state.store(state, Relaxed);
-        self.shared.rising.fetch_or(changed & state, Relaxed);
-        self.shared.falling.fetch_or(changed & !state, Relaxed);
+        // The state is stored before the edges are released, so a reader that sees an edge also sees its state.
+        self.shared.rising.fetch_or(changed & state, Release);
+        self.shared.falling.fetch_or(changed & !state, Release);
         // Fails if a wakeup is already pending or there is no reader, both of which are fine.
         self.wake_sender.try_send(()).ok();
     }
@@ -107,15 +114,21 @@ impl InputReader {
             // The changes of a wakeup can already have been taken along with earlier ones.
             Ok(()) => Ok(self.take_change()),
             Err(RecvTimeoutError::Timeout) => Ok(None),
-            Err(RecvTimeoutError::Disconnected) => Err(UpdateThreadError(String::from(
-                "The matrix was dropped or the thread panicked.",
-            ))),
+            Err(RecvTimeoutError::Disconnected) => {
+                let reason = self
+                    .thread_error
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone()
+                    .unwrap_or_else(|| "the matrix was dropped or the thread panicked".to_string());
+                Err(UpdateThreadError(reason))
+            }
         }
     }
 
     fn take_change(&self) -> Option<InputChange> {
-        let rising = self.shared.rising.swap(0, Relaxed);
-        let falling = self.shared.falling.swap(0, Relaxed);
+        let rising = self.shared.rising.swap(0, Acquire);
+        let falling = self.shared.falling.swap(0, Acquire);
         (rising | falling != 0).then(|| InputChange {
             state: self.state(),
             rising,
@@ -132,7 +145,7 @@ mod tests {
 
     #[test]
     fn test_changes_are_combined() {
-        let (mut writer, reader) = input_channel();
+        let (mut writer, reader) = input_channel(Default::default());
         writer.set_initial(0b01);
         assert_eq!(reader.state(), 0b01);
         assert_eq!(reader.wait_for_change(Duration::ZERO).unwrap(), None);
@@ -154,7 +167,7 @@ mod tests {
 
     #[test]
     fn test_change_before_disconnect() {
-        let (mut writer, reader) = input_channel();
+        let (mut writer, reader) = input_channel(Default::default());
         writer.update(0b1);
         drop(writer);
         assert!(reader.wait_for_change(Duration::MAX).unwrap().is_some());

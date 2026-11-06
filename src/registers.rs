@@ -132,7 +132,7 @@ fn mmap_bcm_register_from(
     offset: u64,
     size_bytes: usize,
 ) -> io::Result<MmapMut> {
-    let base = chip.get_peripherals_base().ok_or_else(|| {
+    let base = chip.peripherals_base().ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::Unsupported,
             "The chip has no BCM peripherals for the GPIO pins.",

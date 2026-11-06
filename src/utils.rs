@@ -108,13 +108,13 @@ pub(crate) fn drop_privs(user: &str, group: &str) -> Result<(), String> {
         .parse()
         .ok()
         .or_else(|| gid_from_name(group))
-        .ok_or("Failed to get GID for given group")?;
+        .ok_or_else(|| format!("Failed to get GID for group '{group}'"))?;
 
     let uid: uid_t = user
         .parse()
         .ok()
         .or_else(|| uid_from_name(user))
-        .ok_or("Failed to get UID for given user")?;
+        .ok_or_else(|| format!("Failed to get UID for user '{user}'"))?;
 
     if !set_supplementary_groups(gid) {
         return Err(String::from("Failed to set supplementary groups"));
