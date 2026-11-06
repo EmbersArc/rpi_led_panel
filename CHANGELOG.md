@@ -33,7 +33,6 @@ Merged from upstream:
 - Fix a panic when a pixel mapper makes the canvas taller than six panels, e.g. `Rotate:90` on a long chain or a 1:4 multiplexer with parallel chains.
 - Support the `AdafruitHat`, `Classic` and `ClassicPi1` hardware mappings, which panicked because their output enable pin can't be driven by the PWM hardware. They now use timer based pulses.
 - Only claim the GPIO pins of the parallel chains in use. Previously, e.g. the I2C and UART pins were always turned into outputs.
-- `Canvas::set_brightness` and `Canvas::set_pwm_bits` now carry over to the canvas returned by `RGBMatrix::update_on_vsync` instead of only applying to every other frame.
 - Fix the 64 bit system timer read, which could jump by about 71 minutes when the low half overflowed.
 - Fix the `GBR` and `BRG` LED sequences, which were swapped compared to the upstream library.
 - Fix the vertical blocks of the `P8Outdoor1R1G1B` multiplexer.
@@ -75,6 +74,7 @@ Merged from upstream:
 
 - `RGBMatrix::new` returns a `Canvas` instead of a `Box<Canvas>`, and `RGBMatrix::update_on_vsync` and `RGBMatrix::update_on_vsync_every` take and return a `Canvas`, so `canvas.as_mut()` becomes `&mut canvas` when drawing.
 - `update_on_vsync` and `update_on_vsync_every` return a `Result` with an `UpdateThreadError` instead of panicking when the update thread shuts down unexpectedly. This replaces `try_update_on_vsync`, `try_update_on_vsync_every` and `MatrixUpdateError`.
+- Move `set_brightness` and `set_pwm_bits` from `Canvas` to `RGBMatrix`. On the canvas they only applied to every other frame.
 - Replace `RGBMatrix::receive_new_inputs` with an `InputReader` from `RGBMatrix::take_input_reader`, which can be moved to another thread.
 - Rename `RGBMatrix::get_framerate` to `RGBMatrix::framerate`.
 - `RGBMatrix::new` no longer takes the `requested_inputs` argument. Use the new `input_bits` option of `RGBMatrixConfig` instead, also available as `--input-bits`.

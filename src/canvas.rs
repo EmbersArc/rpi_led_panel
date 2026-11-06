@@ -486,11 +486,8 @@ impl Canvas {
         });
     }
 
-    /// Set PWM bits used for output, between 1 and 11. Default is 11, but if you only deal with simple
-    /// comic-colors, 1 might be sufficient. Lower values require less CPU.
-    ///
-    /// The setting carries over to the canvases returned by [`crate::RGBMatrix::update_on_vsync`].
-    pub fn set_pwm_bits(&mut self, pwm_bits: usize) {
+    /// Set PWM bits used for output, between 1 and 11. Set by [`crate::RGBMatrix::set_pwm_bits`].
+    pub(crate) fn set_pwm_bits(&mut self, pwm_bits: usize) {
         let pwm_bits = pwm_bits.clamp(1, BIT_PLANES);
         // Planes that become visible may still hold data from long ago, so turn them off.
         let black = self.map_color(0, 0, 0);
@@ -503,21 +500,15 @@ impl Canvas {
         self.pwm_bits = pwm_bits;
     }
 
-    #[must_use]
-    pub fn pwm_bits(&self) -> usize {
+    #[cfg(test)]
+    pub(crate) fn pwm_bits(&self) -> usize {
         self.pwm_bits
     }
 
-    /// Set the canvas' brightness in percent. Only affects pixels drawn afterwards.
-    ///
-    /// The setting carries over to the canvases returned by [`crate::RGBMatrix::update_on_vsync`].
-    pub fn set_brightness(&mut self, brightness: u8) {
+    /// Set the canvas' brightness in percent. Only affects pixels drawn afterwards. Set by
+    /// [`crate::RGBMatrix::set_brightness`].
+    pub(crate) fn set_brightness(&mut self, brightness: u8) {
         self.brightness = brightness.clamp(1, 100);
-    }
-
-    #[must_use]
-    pub fn brightness(&self) -> u8 {
-        self.brightness
     }
 
     /// Turn the CIE1931 luminance correction on or off. It is on by default and makes the brightness steps

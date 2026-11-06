@@ -239,6 +239,10 @@ pub struct RGBMatrix {
     thread_error: Arc<Mutex<Option<String>>>,
     /// Whether the canvases that are handed back are cleared.
     clear_on_vsync: bool,
+    /// Brightness in percent for the canvases returned by `update_on_vsync`.
+    brightness: u8,
+    /// PWM bits for the canvases returned by `update_on_vsync`.
+    pwm_bits: usize,
     /// Whether the display is currently suspended.
     suspended: bool,
 }
@@ -249,6 +253,8 @@ impl Debug for RGBMatrix {
             .field("enabled_input_bits", &self.enabled_input_bits)
             .field("enabled_output_bits", &self.enabled_output_bits)
             .field("framerate", &self.framerate())
+            .field("brightness", &self.brightness)
+            .field("pwm_bits", &self.pwm_bits)
             .field("suspended", &self.suspended)
             .finish_non_exhaustive()
     }
@@ -310,6 +316,7 @@ impl RGBMatrix {
         let thread_error = Arc::new(Mutex::new(None));
         let thread_error_sender = Arc::clone(&thread_error);
         let clear_on_vsync = config.clear_on_vsync;
+        let (brightness, pwm_bits) = (config.led_brightness, config.pwm_bits);
 
         let spawn_result = Builder::new()
             .name(REFRESH_THREAD_NAME.to_string())
@@ -501,6 +508,8 @@ impl RGBMatrix {
             framerate,
             thread_error,
             clear_on_vsync,
+            brightness,
+            pwm_bits,
             suspended: false,
         };
 
@@ -724,7 +733,8 @@ impl RGBMatrix {
     /// If this function is not called before the next frame update, the previous
     /// frame is drawn again.
     ///
-    /// The returned canvas has the same brightness, PWM bits and luminance correction as the one passed in.
+    /// The returned canvas has the brightness and PWM bits of the matrix, and the luminance correction of the one
+    /// passed in.
     ///
     /// If the display is suspended, this resumes it and returns immediately.
     ///
@@ -742,8 +752,6 @@ impl RGBMatrix {
         canvas: Canvas,
         frames: u32,
     ) -> Result<Canvas, UpdateThreadError> {
-        let brightness = canvas.brightness();
-        let pwm_bits = canvas.pwm_bits();
         let luminance_correct = canvas.luminance_correct();
 
         if self.canvas_to_thread_sender.send((canvas, frames)).is_err() {
@@ -755,8 +763,8 @@ impl RGBMatrix {
         };
 
         // Both canvases need the same settings, otherwise they would alternate between frames.
-        canvas.set_brightness(brightness);
-        canvas.set_pwm_bits(pwm_bits);
+        canvas.set_brightness(self.brightness);
+        canvas.set_pwm_bits(self.pwm_bits);
         canvas.set_luminance_correct(luminance_correct);
 
         // Clear the canvas before handing it back to the user, unless they redraw every pixel anyway. Without
@@ -765,6 +773,32 @@ impl RGBMatrix {
             canvas.fill(0, 0, 0);
         }
         Ok(canvas)
+    }
+
+    /// Set the brightness in percent, clamped to 1-100. This applies to the canvases returned by
+    /// [`RGBMatrix::update_on_vsync`] from now on, not to the one that is currently being drawn to. Only affects
+    /// pixels drawn afterwards.
+    pub fn set_brightness(&mut self, brightness: u8) {
+        self.brightness = brightness.clamp(1, 100);
+    }
+
+    /// The brightness in percent that the canvases returned by [`RGBMatrix::update_on_vsync`] get.
+    #[must_use]
+    pub fn brightness(&self) -> u8 {
+        self.brightness
+    }
+
+    /// Set the PWM bits used for output, clamped to 1-11. Default is 11, but if you only deal with simple
+    /// comic-colors, 1 might be sufficient. Lower values require less CPU. This applies to the canvases returned
+    /// by [`RGBMatrix::update_on_vsync`] from now on, not to the one that is currently being drawn to.
+    pub fn set_pwm_bits(&mut self, pwm_bits: usize) {
+        self.pwm_bits = pwm_bits.clamp(1, BIT_PLANES);
+    }
+
+    /// The PWM bits that the canvases returned by [`RGBMatrix::update_on_vsync`] get.
+    #[must_use]
+    pub fn pwm_bits(&self) -> usize {
+        self.pwm_bits
     }
 
     /// Blank the display and stop refreshing it until the next call to [`RGBMatrix::update_on_vsync`]. This
