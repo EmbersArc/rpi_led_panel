@@ -1,9 +1,11 @@
 use std::{
     sync::{
-        Arc,
-        atomic::{AtomicU32, Ordering::{Acquire, Relaxed, Release}},
+        Arc, Mutex,
+        atomic::{
+            AtomicU32,
+            Ordering::{Acquire, Relaxed, Release},
+        },
         mpsc::{Receiver, RecvTimeoutError, SyncSender, sync_channel},
-        Mutex,
     },
     time::Duration,
 };
@@ -120,7 +122,9 @@ impl InputReader {
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
                     .clone()
-                    .unwrap_or_else(|| "it exited or panicked, or the matrix was dropped".to_string());
+                    .unwrap_or_else(|| {
+                        "it exited or panicked, or the matrix was dropped".to_string()
+                    });
                 Err(UpdateThreadError(reason))
             }
         }

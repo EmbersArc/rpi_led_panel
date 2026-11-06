@@ -7,8 +7,7 @@ use std::{
     mem::replace,
     sync::atomic::{AtomicU32, Ordering},
     sync::mpsc::{
-        Receiver, RecvTimeoutError, Sender, SyncSender, TryRecvError, channel,
-        sync_channel,
+        Receiver, RecvTimeoutError, Sender, SyncSender, TryRecvError, channel, sync_channel,
     },
     sync::{Arc, Mutex},
     thread::{Builder, JoinHandle, sleep},
@@ -27,9 +26,8 @@ use crate::{
     config::{BIT_PLANES, MAX_REFRESH_RATE},
     gpio::GpioInitializationError,
     inputs::{InputReader, input_channel},
-    named_pixel_mapper::MappingDirection,
     pin_pulser::uses_hardware_pulse,
-    pixel_mapper::PixelMapper,
+    pixel_mapper::{MappingDirection, PixelMapper},
     registers::{STORE_BARRIER_SUPPORTED, UserGpioOutputs, open_dev_mem},
     row_address_setter::RowAddressSetterType,
     rp1::is_pi5_model,
@@ -540,15 +538,14 @@ impl RGBMatrix {
         // Apply the mapping for the panels first.
         let multiplex_mapper_applied = multiplex_mapper.is_some();
         if let Some(mapper) = multiplex_mapper {
-            let mapper = PixelMapper::Multiplex(mapper);
             shared_mapper = Self::apply_pixel_mapper(&shared_mapper, &mapper, pixel_designator)?;
         }
 
         // Apply higher level mappers that might arrange panels.
         for mapper_type in config.pixelmapper.iter() {
             let mapper = mapper_type.create(config.chain_length, config.parallel)?;
-            let mapper = PixelMapper::Named(mapper);
-            shared_mapper = Self::apply_pixel_mapper(&shared_mapper, &mapper, pixel_designator)?;
+            shared_mapper =
+                Self::apply_pixel_mapper(&shared_mapper, mapper.as_ref(), pixel_designator)?;
         }
         if multiplex_mapper_applied || !config.pixelmapper.is_empty() {
             shared_mapper.find_hidden_bits(&matrix);
@@ -664,7 +661,7 @@ impl RGBMatrix {
 
     fn apply_pixel_mapper(
         shared_mapper: &PixelDesignatorMap,
-        mapper: &PixelMapper,
+        mapper: &dyn PixelMapper,
         pixel_designator: PixelDesignator,
     ) -> Result<PixelDesignatorMap, MatrixCreationError> {
         let old_width = shared_mapper.width();

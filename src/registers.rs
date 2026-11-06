@@ -435,8 +435,7 @@ impl ClkRegisters {
         self.pwm_ctl.write(CM_PASSWD | cm_ctl_src(CM_SRC_PLLD));
 
         // set PWM clock divider
-        self.pwm_div
-            .write(CM_PASSWD | cm_div_divi(divider));
+        self.pwm_div.write(CM_PASSWD | cm_div_divi(divider));
 
         // enable PWM clock
         self.pwm_ctl

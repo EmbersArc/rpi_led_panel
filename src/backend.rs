@@ -118,9 +118,7 @@ impl BcmBackend {
             gpio,
             row_setter,
             hardware_mapping: config.hardware_mapping,
-            color_clk_mask: config
-                .hardware_mapping
-                .color_clock_mask(config.parallel),
+            color_clk_mask: config.hardware_mapping.color_clock_mask(config.parallel),
         })
     }
 

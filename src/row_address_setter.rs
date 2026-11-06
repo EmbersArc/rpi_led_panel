@@ -35,7 +35,9 @@ impl RowAddressSetterType {
                 RowAddressSetter::shift_register(config, h.c, true)
             }
             RowAddressSetterType::SM5266 => RowAddressSetter::sm5266(config),
-            RowAddressSetterType::B707ShiftRegister => RowAddressSetter::b707_shift_register(config),
+            RowAddressSetterType::B707ShiftRegister => {
+                RowAddressSetter::b707_shift_register(config)
+            }
         }
     }
 }
