@@ -73,7 +73,7 @@ pub fn set_thread_affinity(_core_id: usize) -> bool {
     false
 }
 
-fn get_gid_from_name(group: &str) -> Option<gid_t> {
+fn gid_from_name(group: &str) -> Option<gid_t> {
     let group_cstr = CString::new(group).ok()?;
     unsafe {
         let g = getgrnam(group_cstr.as_ptr());
@@ -90,7 +90,7 @@ fn set_supplementary_groups(gid: gid_t) -> bool {
     unsafe { libc::setgroups(groups.len() as _, groups.as_ptr()) == 0 }
 }
 
-fn get_uid_from_name(user: &str) -> Option<uid_t> {
+fn uid_from_name(user: &str) -> Option<uid_t> {
     let user_cstr = CString::new(user).ok()?;
     unsafe {
         let p = getpwnam(user_cstr.as_ptr());
@@ -107,14 +107,14 @@ pub(crate) fn drop_privs(user: &str, group: &str) -> Result<(), String> {
     let gid: gid_t = group
         .parse()
         .ok()
-        .or_else(|| get_gid_from_name(group))
-        .ok_or("Failed to get GID for given group")?;
+        .or_else(|| gid_from_name(group))
+        .ok_or_else(|| format!("Failed to get GID for group '{group}'"))?;
 
     let uid: uid_t = user
         .parse()
         .ok()
-        .or_else(|| get_uid_from_name(user))
-        .ok_or("Failed to get UID for given user")?;
+        .or_else(|| uid_from_name(user))
+        .ok_or_else(|| format!("Failed to get UID for user '{user}'"))?;
 
     if !set_supplementary_groups(gid) {
         return Err(String::from("Failed to set supplementary groups"));
@@ -155,8 +155,7 @@ impl FrameRateMonitor {
         }
         self.last_time = Some(time::Instant::now());
 
-        self.framerate
-            .store(self.get_fps() as u32, Ordering::Relaxed);
+        self.framerate.store(self.fps() as u32, Ordering::Relaxed);
     }
 
     /// Stop measuring until the next update, so that the time in between is not counted as a frame.
@@ -165,7 +164,7 @@ impl FrameRateMonitor {
         self.framerate.store(0, Ordering::Relaxed);
     }
 
-    pub(crate) fn get_fps(&self) -> f32 {
+    pub(crate) fn fps(&self) -> f32 {
         WINDOW_LENGTH as f32 / self.times.iter().sum::<f32>()
     }
 }

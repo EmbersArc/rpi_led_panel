@@ -50,7 +50,7 @@ impl Display for GpioInitializationError {
             ),
             GpioInitializationError::SoundModuleLoaded => f.write_str(
                 "The sound module is loaded. Disable on-board sound first.\n\
-                \t* Raspberry PI OS: Set `dtparam=audio=off` in `/boot/config.txt`\n\
+                \t* Raspberry Pi OS: Set `dtparam=audio=off` in `/boot/config.txt`\n\
                 \t* Other distributions: Add `blacklist snd_bcm2835` in \
                 `/etc/modprobe.d/alsa-blacklist.conf`\n\
                 Finally, reboot the system and try again.",
@@ -86,7 +86,7 @@ impl Gpio {
     pub(crate) fn new(
         chip: PiChip,
         config: &RGBMatrixConfig,
-        address_setter: &dyn RowAddressSetter,
+        address_setter: &RowAddressSetter,
     ) -> Result<Self, MatrixCreationError> {
         let hardware_pulse = uses_hardware_pulse(config);
         // The sound driver uses the PWM peripheral, which is only a problem if we use it as well.

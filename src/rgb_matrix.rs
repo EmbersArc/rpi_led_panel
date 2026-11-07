@@ -7,8 +7,7 @@ use std::{
     mem::replace,
     sync::atomic::{AtomicU32, Ordering},
     sync::mpsc::{
-        Receiver, RecvTimeoutError, Sender, SyncSender, TryRecvError, TrySendError, channel,
-        sync_channel,
+        Receiver, RecvTimeoutError, Sender, SyncSender, TryRecvError, channel, sync_channel,
     },
     sync::{Arc, Mutex},
     thread::{Builder, JoinHandle, sleep},
@@ -24,19 +23,16 @@ use crate::{
     backend::Backend,
     canvas::{Canvas, PixelDesignator, PixelDesignatorMap},
     chip::PiChip,
-    config::{K_BIT_PLANES, MAX_REFRESH_RATE},
+    config::{BIT_PLANES, MAX_REFRESH_RATE},
     gpio::GpioInitializationError,
-    named_pixel_mapper::MappingDirection,
+    inputs::{InputReader, InputWriter, input_channel},
     pin_pulser::uses_hardware_pulse,
-    pixel_mapper::PixelMapper,
+    pixel_mapper::{MappingDirection, PixelMapper},
     registers::{STORE_BARRIER_SUPPORTED, UserGpioOutputs, open_dev_mem},
     row_address_setter::RowAddressSetterType,
     rp1::is_pi5_model,
     utils::{FrameRateMonitor, linux_has_isol_cpu, set_thread_affinity, sleep_at_most},
 };
-
-/// How many input changes are kept until they are received.
-const INPUT_QUEUE_LENGTH: usize = 256;
 
 /// How often GPIO inputs and requests are polled while the display is suspended.
 const SUSPENDED_POLL_INTERVAL: Duration = Duration::from_millis(10);
@@ -51,7 +47,7 @@ fn initialize_update_thread(chip: PiChip, realtime_priority: Option<u8>) {
         warn!("Could not pin the display update thread to core {last_core_id}.");
     }
 
-    // If the user has not setup isolcpus, let them know about the performance improvement.
+    // If the user has not set up isolcpus, let them know about the performance improvement.
     if chip.num_cores() > 1 && !linux_has_isol_cpu(last_core_id) {
         warn!(
             "Suggestion: to slightly improve display update, add\n\tisolcpus={last_core_id}\nat \
@@ -179,7 +175,7 @@ impl Display for MatrixCreationError {
 /// The display update thread stopped while the matrix was in use, e.g. because it panicked or the Raspberry Pi 5
 /// PIO driver failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UpdateThreadError(String);
+pub struct UpdateThreadError(pub(crate) String);
 
 impl Error for UpdateThreadError {}
 
@@ -190,6 +186,197 @@ impl Display for UpdateThreadError {
             "The display update thread stopped unexpectedly: {}",
             self.0
         )
+    }
+}
+
+/// How the display update loop ended.
+enum Exit {
+    /// The matrix was dropped or told to shut down, so the display can be blanked.
+    Shutdown,
+    /// Drawing failed, so the display can't be used anymore. The reason is stored in `thread_error`.
+    Failed,
+}
+
+/// What the display update thread takes over from [`RGBMatrix::new`].
+struct UpdateThread {
+    chip: PiChip,
+    config: RGBMatrixConfig,
+    /// The canvas that is shown.
+    canvas: Canvas,
+    frame_rate_monitor: FrameRateMonitor,
+    control_receiver: Receiver<Control>,
+    canvas_to_thread_receiver: Receiver<(Canvas, u32)>,
+    canvas_from_thread_sender: SyncSender<Canvas>,
+    inputs: InputWriter,
+    thread_start_result_sender: Sender<Result<u32, MatrixCreationError>>,
+    /// Why the thread stopped, if it did.
+    thread_error: Arc<Mutex<Option<String>>>,
+}
+
+impl UpdateThread {
+    fn run(mut self) {
+        initialize_update_thread(self.chip, self.config.realtime_priority);
+
+        let mut backend = match Backend::new(self.chip, &self.config) {
+            Ok(backend) => backend,
+            Err(error) => {
+                // If sending fails, the main thread has already given up waiting.
+                self.thread_start_result_sender.send(Err(error)).ok();
+                return;
+            }
+        };
+
+        // Run the initialization sequence if necessary.
+        if let Some(panel_type) = self.config.panel_type
+            && let Err(error) = backend.init_panels(&panel_type.init(&self.config))
+        {
+            self.thread_start_result_sender.send(Err(error)).ok();
+            return;
+        }
+
+        let enabled_input_bits = backend.request_inputs(self.config.input_bits);
+        self.inputs.set_initial(backend.read_inputs());
+        if self
+            .thread_start_result_sender
+            .send(Ok(enabled_input_bits))
+            .is_err()
+        {
+            // The main thread has already given up waiting.
+            return;
+        }
+
+        if let Exit::Shutdown = self.refresh_display(&mut backend) {
+            // Turn it off. Dropping the backend afterwards releases the pins.
+            self.canvas.fill(0, 0, 0);
+            let _ = backend.dump(&self.canvas, 0);
+        }
+    }
+
+    /// Keep the reason for the user, who gets an error on the next update.
+    fn fail(&self, error: impl ToString) -> Exit {
+        *self.thread_error.lock().unwrap_or_else(|e| e.into_inner()) = Some(error.to_string());
+        Exit::Failed
+    }
+
+    /// Keep showing the latest canvas until the matrix is dropped.
+    fn refresh_display(&mut self, backend: &mut Backend) -> Exit {
+        // Dither sequence
+        let mut dither_low_bit_sequence = 0;
+        let dither_start_bits = match self.config.dither_bits {
+            0 => [0, 0, 0, 0],
+            1 => [0, 1, 0, 1],
+            2 => [0, 1, 2, 2],
+            _ => unreachable!("dither_bits is checked in validate_config"),
+        };
+
+        // `None` refreshes as fast as possible.
+        let frame_time_target = self.config.frame_time_target();
+        let min_sys_sleep_time = Duration::from_micros(self.config.min_sys_sleep_microseconds);
+
+        // The canvas to show next, and for how many frames to show the current one before.
+        let mut next_canvas: Option<Canvas> = None;
+        let mut frame_multiple = 1;
+        let mut frame_count: u32 = 0;
+        let mut suspended = false;
+        let mut refresh_display = self.config.show_refresh.then(RefreshRateDisplay::new);
+
+        loop {
+            let start_time = Instant::now();
+            loop {
+                match self.control_receiver.try_recv() {
+                    Ok(Control::RequestOutputs(bits, reply)) => {
+                        reply.send(backend.request_outputs(bits)).ok();
+                    }
+                    Ok(Control::Suspend) => {
+                        // Draw a blank frame so that no row stays lit, but keep the current canvas
+                        // for when the display is resumed.
+                        let mut blank_canvas = self.canvas.clone();
+                        blank_canvas.fill(0, 0, 0);
+                        if let Err(error) = backend.dump(&blank_canvas, 0) {
+                            return self.fail(error);
+                        }
+                        self.frame_rate_monitor.pause();
+                        suspended = true;
+                    }
+                    Ok(Control::Shutdown) | Err(TryRecvError::Disconnected) => {
+                        return Exit::Shutdown;
+                    }
+                    Err(TryRecvError::Empty) => break,
+                }
+            }
+            // Read input bits and publish them if they have changed.
+            self.inputs.update(backend.read_inputs());
+            // Check for a swap canvas. While suspended, wait for one but keep polling the inputs.
+            if next_canvas.is_none() {
+                let received = if suspended {
+                    self.canvas_to_thread_receiver
+                        .recv_timeout(SUSPENDED_POLL_INTERVAL)
+                        .map_err(|error| match error {
+                            RecvTimeoutError::Timeout => TryRecvError::Empty,
+                            RecvTimeoutError::Disconnected => TryRecvError::Disconnected,
+                        })
+                } else {
+                    self.canvas_to_thread_receiver.try_recv()
+                };
+                match received {
+                    Ok((new_canvas, multiple)) => {
+                        next_canvas = Some(new_canvas);
+                        frame_multiple = multiple.max(1);
+                        if suspended {
+                            // Show the first canvas after resuming right away.
+                            suspended = false;
+                            frame_count = 0;
+                        }
+                    }
+                    Err(TryRecvError::Disconnected) => return Exit::Shutdown,
+                    Err(TryRecvError::Empty) => {}
+                }
+            }
+            if suspended {
+                continue;
+            }
+            // Only swap after the requested number of frames.
+            if frame_count.is_multiple_of(frame_multiple) {
+                frame_count = 0;
+                if let Some(new_canvas) = next_canvas.take() {
+                    let old_canvas = replace(&mut self.canvas, new_canvas);
+                    let Ok(()) = self.canvas_from_thread_sender.send(old_canvas) else {
+                        return Exit::Shutdown;
+                    };
+                }
+            }
+
+            if let Err(error) = backend.dump(
+                &self.canvas,
+                dither_start_bits[dither_low_bit_sequence % dither_start_bits.len()],
+            ) {
+                return self.fail(error);
+            }
+            dither_low_bit_sequence += 1;
+            frame_count += 1;
+
+            self.frame_rate_monitor.update();
+
+            // Wait for the rest of the frame.
+            if let Some(frame_time_target) = frame_time_target {
+                let end_time = start_time + frame_time_target;
+                if self.config.busy_waiting {
+                    sleep_at_most(
+                        end_time.saturating_duration_since(Instant::now()),
+                        min_sys_sleep_time,
+                    );
+                    while Instant::now() < end_time {
+                        std::hint::spin_loop();
+                    }
+                } else {
+                    sleep(end_time.saturating_duration_since(Instant::now()));
+                }
+            }
+
+            if let Some(display) = refresh_display.as_mut() {
+                display.update(start_time.elapsed());
+            }
+        }
     }
 }
 
@@ -218,8 +405,8 @@ pub struct RGBMatrix {
     thread_handle: Option<JoinHandle<()>>,
     /// Requests to the update thread.
     control_sender: Sender<Control>,
-    /// Receiver for GPIO inputs.
-    input_receiver: Receiver<u32>,
+    /// Reader for GPIO inputs, until it is taken with [`RGBMatrix::take_input_reader`].
+    input_reader: Option<InputReader>,
     /// Channel to send canvas to update thread, with the number of frames to show the previous canvas for.
     canvas_to_thread_sender: SyncSender<(Canvas, u32)>,
     /// Channel to receive canvas from update thread.
@@ -241,6 +428,10 @@ pub struct RGBMatrix {
     thread_error: Arc<Mutex<Option<String>>>,
     /// Whether the canvases that are handed back are cleared.
     clear_on_vsync: bool,
+    /// Brightness in percent for the canvases returned by `update_on_vsync`.
+    brightness: u8,
+    /// PWM bits for the canvases returned by `update_on_vsync`.
+    pwm_bits: usize,
     /// Whether the display is currently suspended.
     suspended: bool,
 }
@@ -251,6 +442,8 @@ impl Debug for RGBMatrix {
             .field("enabled_input_bits", &self.enabled_input_bits)
             .field("enabled_output_bits", &self.enabled_output_bits)
             .field("framerate", &self.framerate())
+            .field("brightness", &self.brightness)
+            .field("pwm_bits", &self.pwm_bits)
             .field("suspended", &self.suspended)
             .finish_non_exhaustive()
     }
@@ -261,7 +454,7 @@ impl RGBMatrix {
     /// controller and a canvas for drawing.
     ///
     /// You can additionally request user readable GPIO bits with [`RGBMatrixConfig::input_bits`], which can
-    /// later be received with [`RGBMatrix::receive_new_inputs`]. Only bits that are not already in use for
+    /// later be read with [`RGBMatrix::take_input_reader`]. Only bits that are not already in use for
     /// reading or writing by the matrix are allowed. Use [`RGBMatrix::enabled_input_bits`] after calling this
     /// function to check which bits were actually available. GPIO inputs are not supported on the Raspberry
     /// Pi 5.
@@ -289,197 +482,37 @@ impl RGBMatrix {
 
         let shared_mapper = Self::create_pixel_map(&mut config)?;
 
-        let dither_start_bits = match config.dither_bits {
-            0 => [0, 0, 0, 0],
-            1 => [0, 1, 0, 1],
-            2 => [0, 1, 2, 2],
-            _ => unreachable!("dither_bits is checked in validate_config"),
-        };
-
         // Create two canvases, one for the display update thread and one for the user to modify. They will be
         // swapped out after each frame.
         let canvas = Canvas::new(&config, Arc::new(shared_mapper));
-        let mut thread_canvas = canvas.clone();
+        let thread_canvas = canvas.clone();
 
         let (canvas_to_thread_sender, canvas_to_thread_receiver) = sync_channel::<(Canvas, u32)>(0);
         let (canvas_from_thread_sender, canvas_from_thread_receiver) = sync_channel::<Canvas>(1);
         let (control_sender, control_receiver) = channel::<Control>();
-        let (input_sender, input_receiver) = sync_channel::<u32>(INPUT_QUEUE_LENGTH);
+        let thread_error = Arc::new(Mutex::new(None));
+        let (input_writer, input_reader) = input_channel(Arc::clone(&thread_error));
         let (thread_start_result_sender, thread_start_result_receiver) =
             channel::<Result<u32, MatrixCreationError>>();
         let framerate = Arc::new(AtomicU32::new(0));
-        let mut frame_rate_monitor = FrameRateMonitor::new(framerate.clone());
-        let thread_error = Arc::new(Mutex::new(None));
-        let thread_error_sender = Arc::clone(&thread_error);
         let clear_on_vsync = config.clear_on_vsync;
+        let (brightness, pwm_bits) = (config.led_brightness, config.pwm_bits);
 
+        let update_thread = UpdateThread {
+            chip,
+            config,
+            canvas: thread_canvas,
+            frame_rate_monitor: FrameRateMonitor::new(framerate.clone()),
+            control_receiver,
+            canvas_to_thread_receiver,
+            canvas_from_thread_sender,
+            inputs: input_writer,
+            thread_start_result_sender,
+            thread_error: Arc::clone(&thread_error),
+        };
         let spawn_result = Builder::new()
             .name(REFRESH_THREAD_NAME.to_string())
-            .spawn(move || {
-                initialize_update_thread(chip, config.realtime_priority);
-
-                let mut backend = match Backend::new(chip, &config) {
-                    Ok(backend) => backend,
-                    Err(error) => {
-                        // If sending fails, the main thread has already given up waiting.
-                        thread_start_result_sender.send(Err(error)).ok();
-                        return;
-                    }
-                };
-
-                // Run the initialization sequence if necessary.
-                if let Some(panel_type) = config.panel_type
-                    && let Err(error) = backend.init_panels(&panel_type.init(&config))
-                {
-                    thread_start_result_sender.send(Err(error)).ok();
-                    return;
-                }
-
-                let mut last_gpio_inputs: u32 = 0;
-
-                // Dither sequence
-                let mut dither_low_bit_sequence = 0;
-
-                // `None` refreshes as fast as possible.
-                let frame_time_target = config.frame_time_target();
-                let min_sys_sleep_time = Duration::from_micros(config.min_sys_sleep_microseconds);
-
-                // The canvas to show next, and for how many frames to show the current one before.
-                let mut next_canvas: Option<Canvas> = None;
-                let mut frame_multiple = 1;
-                let mut frame_count: u32 = 0;
-                let mut suspended = false;
-                let mut refresh_display = config.show_refresh.then(RefreshRateDisplay::new);
-
-                let enabled_input_bits = backend.request_inputs(config.input_bits);
-                if thread_start_result_sender
-                    .send(Ok(enabled_input_bits))
-                    .is_err()
-                {
-                    // The main thread has already given up waiting.
-                    return;
-                }
-
-                'thread: loop {
-                    let start_time = Instant::now();
-                    loop {
-                        match control_receiver.try_recv() {
-                            Ok(Control::RequestOutputs(bits, reply)) => {
-                                reply.send(backend.request_outputs(bits)).ok();
-                            }
-                            Ok(Control::Suspend) => {
-                                // Draw a blank frame so that no row stays lit, but keep the current canvas
-                                // for when the display is resumed.
-                                let mut blank_canvas = thread_canvas.clone();
-                                blank_canvas.fill(0, 0, 0);
-                                if let Err(error) = backend.dump(&blank_canvas, 0) {
-                                    *thread_error_sender
-                                        .lock()
-                                        .unwrap_or_else(|e| e.into_inner()) =
-                                        Some(error.to_string());
-                                    return;
-                                }
-                                frame_rate_monitor.pause();
-                                suspended = true;
-                            }
-                            Ok(Control::Shutdown) | Err(TryRecvError::Disconnected) => {
-                                break 'thread;
-                            }
-                            Err(TryRecvError::Empty) => break,
-                        }
-                    }
-                    // Read input bits and send them if they have changed.
-                    let new_inputs = backend.read_inputs();
-                    if new_inputs != last_gpio_inputs {
-                        match input_sender.try_send(new_inputs) {
-                            Ok(()) => last_gpio_inputs = new_inputs,
-                            // Nobody is receiving the inputs. Try again in the next frame.
-                            Err(TrySendError::Full(_)) => {}
-                            Err(TrySendError::Disconnected(_)) => break 'thread,
-                        }
-                    }
-                    // Check for a swap canvas. While suspended, wait for one but keep polling the inputs.
-                    if next_canvas.is_none() {
-                        let received = if suspended {
-                            canvas_to_thread_receiver
-                                .recv_timeout(SUSPENDED_POLL_INTERVAL)
-                                .map_err(|error| match error {
-                                    RecvTimeoutError::Timeout => TryRecvError::Empty,
-                                    RecvTimeoutError::Disconnected => TryRecvError::Disconnected,
-                                })
-                        } else {
-                            canvas_to_thread_receiver.try_recv()
-                        };
-                        match received {
-                            Ok((new_canvas, multiple)) => {
-                                next_canvas = Some(new_canvas);
-                                frame_multiple = multiple.max(1);
-                                if suspended {
-                                    // Show the first canvas after resuming right away.
-                                    suspended = false;
-                                    frame_count = 0;
-                                }
-                            }
-                            Err(TryRecvError::Disconnected) => {
-                                break 'thread;
-                            }
-                            Err(TryRecvError::Empty) => {}
-                        }
-                    }
-                    if suspended {
-                        continue;
-                    }
-                    // Only swap after the requested number of frames.
-                    if frame_count.is_multiple_of(frame_multiple) {
-                        frame_count = 0;
-                        if let Some(new_canvas) = next_canvas.take() {
-                            let old_canvas = replace(&mut thread_canvas, new_canvas);
-                            let Ok(()) = canvas_from_thread_sender.send(old_canvas) else {
-                                break 'thread;
-                            };
-                        }
-                    }
-
-                    if let Err(error) = backend.dump(
-                        &thread_canvas,
-                        dither_start_bits[dither_low_bit_sequence % dither_start_bits.len()],
-                    ) {
-                        // Keep the reason for the user, who gets an error on the next update.
-                        *thread_error_sender
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner()) = Some(error.to_string());
-                        return;
-                    }
-                    dither_low_bit_sequence += 1;
-                    frame_count += 1;
-
-                    frame_rate_monitor.update();
-
-                    // Wait for the rest of the frame.
-                    if let Some(frame_time_target) = frame_time_target {
-                        let end_time = start_time + frame_time_target;
-                        if config.busy_waiting {
-                            sleep_at_most(
-                                end_time.saturating_duration_since(Instant::now()),
-                                min_sys_sleep_time,
-                            );
-                            while Instant::now() < end_time {
-                                std::hint::spin_loop();
-                            }
-                        } else {
-                            sleep(end_time.saturating_duration_since(Instant::now()));
-                        }
-                    }
-
-                    if let Some(display) = refresh_display.as_mut() {
-                        display.update(start_time.elapsed());
-                    }
-                }
-
-                // Turn it off. Dropping the backend afterwards releases the pins.
-                thread_canvas.fill(0, 0, 0);
-                let _ = backend.dump(&thread_canvas, 0);
-            });
+            .spawn(move || update_thread.run());
         let thread_handle = spawn_result.map_err(|error| {
             MatrixCreationError::ThreadPanicked(format!("could not start the thread: {error}"))
         })?;
@@ -501,7 +534,7 @@ impl RGBMatrix {
         let rgbmatrix = Self {
             thread_handle: Some(thread_handle),
             control_sender,
-            input_receiver,
+            input_reader: Some(input_reader),
             canvas_to_thread_sender,
             canvas_from_thread_receiver,
             enabled_input_bits,
@@ -512,6 +545,8 @@ impl RGBMatrix {
             framerate,
             thread_error,
             clear_on_vsync,
+            brightness,
+            pwm_bits,
             suspended: false,
         };
 
@@ -542,15 +577,14 @@ impl RGBMatrix {
         // Apply the mapping for the panels first.
         let multiplex_mapper_applied = multiplex_mapper.is_some();
         if let Some(mapper) = multiplex_mapper {
-            let mapper = PixelMapper::Multiplex(mapper);
             shared_mapper = Self::apply_pixel_mapper(&shared_mapper, &mapper, pixel_designator)?;
         }
 
         // Apply higher level mappers that might arrange panels.
         for mapper_type in config.pixelmapper.iter() {
             let mapper = mapper_type.create(config.chain_length, config.parallel)?;
-            let mapper = PixelMapper::Named(mapper);
-            shared_mapper = Self::apply_pixel_mapper(&shared_mapper, &mapper, pixel_designator)?;
+            shared_mapper =
+                Self::apply_pixel_mapper(&shared_mapper, mapper.as_ref(), pixel_designator)?;
         }
         if multiplex_mapper_applied || !config.pixelmapper.is_empty() {
             shared_mapper.find_hidden_bits(&matrix);
@@ -587,14 +621,14 @@ impl RGBMatrix {
                 config.dither_bits
             ));
         }
-        if !(1..=K_BIT_PLANES).contains(&config.pwm_bits) {
+        if !(1..=BIT_PLANES).contains(&config.pwm_bits) {
             return invalid(format!(
-                "pwm_bits must be between 1 and {K_BIT_PLANES}, got {}.",
+                "pwm_bits must be between 1 and {BIT_PLANES}, got {}.",
                 config.pwm_bits
             ));
         }
         // The on-time doubles for each of the bit planes after the lowest, which must not overflow.
-        let max_lsb_nanoseconds = u32::MAX >> (K_BIT_PLANES - 1);
+        let max_lsb_nanoseconds = u32::MAX >> (BIT_PLANES - 1);
         if !(1..=max_lsb_nanoseconds).contains(&config.pwm_lsb_nanoseconds) {
             return invalid(format!(
                 "pwm_lsb_nanoseconds must be between 1 and {max_lsb_nanoseconds}, got {}.",
@@ -666,12 +700,12 @@ impl RGBMatrix {
 
     fn apply_pixel_mapper(
         shared_mapper: &PixelDesignatorMap,
-        mapper: &PixelMapper,
+        mapper: &dyn PixelMapper,
         pixel_designator: PixelDesignator,
     ) -> Result<PixelDesignatorMap, MatrixCreationError> {
         let old_width = shared_mapper.width();
         let old_height = shared_mapper.height();
-        let [new_width, new_height] = mapper.get_size_mapping(old_width, old_height)?;
+        let [new_width, new_height] = mapper.size_mapping(old_width, old_height)?;
         if new_width == 0 || new_height == 0 {
             return Err(MatrixCreationError::PixelMapperError(format!(
                 "The pixel mapper turns the {old_width}x{old_height} matrix into an empty canvas."
@@ -735,7 +769,8 @@ impl RGBMatrix {
     /// If this function is not called before the next frame update, the previous
     /// frame is drawn again.
     ///
-    /// The returned canvas has the same brightness, PWM bits and luminance correction as the one passed in.
+    /// The returned canvas has the brightness and PWM bits of the matrix, and the luminance correction of the one
+    /// passed in.
     ///
     /// If the display is suspended, this resumes it and returns immediately.
     ///
@@ -753,8 +788,6 @@ impl RGBMatrix {
         canvas: Canvas,
         frames: u32,
     ) -> Result<Canvas, UpdateThreadError> {
-        let brightness = canvas.brightness();
-        let pwm_bits = canvas.pwm_bits();
         let luminance_correct = canvas.luminance_correct();
 
         if self.canvas_to_thread_sender.send((canvas, frames)).is_err() {
@@ -766,8 +799,8 @@ impl RGBMatrix {
         };
 
         // Both canvases need the same settings, otherwise they would alternate between frames.
-        canvas.set_brightness(brightness);
-        canvas.set_pwm_bits(pwm_bits);
+        canvas.set_brightness(self.brightness);
+        canvas.set_pwm_bits(self.pwm_bits);
         canvas.set_luminance_correct(luminance_correct);
 
         // Clear the canvas before handing it back to the user, unless they redraw every pixel anyway. Without
@@ -776,6 +809,32 @@ impl RGBMatrix {
             canvas.fill(0, 0, 0);
         }
         Ok(canvas)
+    }
+
+    /// Set the brightness in percent, clamped to 1-100. This applies to the canvases returned by
+    /// [`RGBMatrix::update_on_vsync`] from now on, not to the one that is currently being drawn to. Only affects
+    /// pixels drawn afterwards.
+    pub fn set_brightness(&mut self, brightness: u8) {
+        self.brightness = brightness.clamp(1, 100);
+    }
+
+    /// The brightness in percent that the canvases returned by [`RGBMatrix::update_on_vsync`] get.
+    #[must_use]
+    pub fn brightness(&self) -> u8 {
+        self.brightness
+    }
+
+    /// Set the PWM bits used for output, clamped to 1-11. Default is 11, but if you only deal with simple
+    /// comic-colors, 1 might be sufficient. Lower values require less CPU. This applies to the canvases returned
+    /// by [`RGBMatrix::update_on_vsync`] from now on, not to the one that is currently being drawn to.
+    pub fn set_pwm_bits(&mut self, pwm_bits: usize) {
+        self.pwm_bits = pwm_bits.clamp(1, BIT_PLANES);
+    }
+
+    /// The PWM bits that the canvases returned by [`RGBMatrix::update_on_vsync`] get.
+    #[must_use]
+    pub fn pwm_bits(&self) -> usize {
+        self.pwm_bits
     }
 
     /// Blank the display and stop refreshing it until the next call to [`RGBMatrix::update_on_vsync`]. This
@@ -820,17 +879,10 @@ impl RGBMatrix {
         self.enabled_input_bits
     }
 
-    /// Tries to receive a new GPIO input as requested with [`RGBMatrixConfig::input_bits`].
-    /// Returns `None` if the inputs didn't change before the timeout.
-    pub fn receive_new_inputs(
-        &mut self,
-        timeout: Duration,
-    ) -> Result<Option<u32>, UpdateThreadError> {
-        match self.input_receiver.recv_timeout(timeout) {
-            Ok(inputs) => Ok(Some(inputs)),
-            Err(RecvTimeoutError::Timeout) => Ok(None),
-            Err(RecvTimeoutError::Disconnected) => Err(self.update_thread_error()),
-        }
+    /// Takes the reader for the GPIO inputs requested with [`RGBMatrixConfig::input_bits`]. The reader can be
+    /// moved to another thread. Returns `None` if it was already taken.
+    pub fn take_input_reader(&mut self) -> Option<InputReader> {
+        self.input_reader.take()
     }
 
     /// Turns GPIO pins that are not used by the matrix into outputs, which can be set with

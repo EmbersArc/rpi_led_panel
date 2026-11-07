@@ -8,14 +8,14 @@ use crate::{
     row_address_setter::RowAddressSetterType,
 };
 
-/// Typically, a Hub75 panel is split in two half displays, so that a 1:16 multiplexing actually multiplexes
+/// Typically, a HUB75 panel is split in two half displays, so that a 1:16 multiplexing actually multiplexes
 /// over two half displays and gives 32 lines.
 pub(crate) const SUB_PANELS: usize = 2;
 
 /// Maximum usable bit planes. 11 bits seems to be a sweet spot in which we still get somewhat useful refresh
 /// rate and have good color richness. This is the default setting. However, in low-light situations, we want
 /// to be able to scale down brightness more by having more bits at the bottom.
-pub(crate) const K_BIT_PLANES: usize = 11;
+pub(crate) const BIT_PLANES: usize = 11;
 
 /// Configuration for an RGB matrix panel controller.
 #[derive(FromArgs, Debug, Clone, PartialEq, Eq, Hash)]
@@ -55,7 +55,7 @@ pub struct RGBMatrixConfig {
     /// display (pwm_bits=11) are somewhere between 100 and 300. Default: 130
     #[argh(option, default = "130")]
     pub pwm_lsb_nanoseconds: u32,
-    /// the Raspberry Pi starting with Pi2 are putting out data too fast for almost all LED panels. In this
+    /// the Raspberry Pis starting with Pi2 are putting out data too fast for almost all LED panels. In this
     /// case, you want to slow down writing to GPIO. Zero for this parameter means 'no slowdown'. The default
     /// 1 typically works fine, but often you have to even go further by setting it to 2. If you have a
     /// Raspberry Pi with a slower processor (Model A, A+, B+, Zero), then a value of 0 might work and is
@@ -169,7 +169,7 @@ impl RGBMatrixConfig {
     }
 
     /// How long the LEDs are on for each bit plane. The lowest bits are dithered and show for the same time.
-    pub(crate) fn bitplane_timings_ns(&self) -> [u32; K_BIT_PLANES] {
+    pub(crate) fn bitplane_timings_ns(&self) -> [u32; BIT_PLANES] {
         let mut timing_ns = self.pwm_lsb_nanoseconds;
         std::array::from_fn(|b| {
             let timing = timing_ns;
@@ -216,5 +216,16 @@ impl Default for RGBMatrixConfig {
             drop_priv_user: String::from("daemon"),
             drop_priv_group: String::from("daemon"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FromArgs, RGBMatrixConfig};
+
+    #[test]
+    fn test_argument_defaults_match_default() {
+        let parsed = RGBMatrixConfig::from_args(&["test"], &[]).unwrap();
+        assert_eq!(parsed, RGBMatrixConfig::default());
     }
 }

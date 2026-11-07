@@ -1,6 +1,10 @@
 use std::str::FromStr;
 
-use crate::{error::InvalidPixelMapperError, rgb_matrix::MatrixCreationError};
+use crate::{
+    error::InvalidPixelMapperError,
+    pixel_mapper::{MappingDirection, PixelMapper},
+    rgb_matrix::MatrixCreationError,
+};
 
 /// The direction in which [`NamedPixelMapperType::Mirror`] flips the display.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -271,7 +275,7 @@ impl NamedPixelMapperType {
         &self,
         chain: usize,
         parallel: usize,
-    ) -> Result<Box<dyn NamedPixelMapper>, MatrixCreationError> {
+    ) -> Result<Box<dyn PixelMapper>, MatrixCreationError> {
         match *self {
             NamedPixelMapperType::Mirror(direction) => {
                 Ok(Box::new(MirrorPixelMapper { direction }))
@@ -310,56 +314,12 @@ impl NamedPixelMapperType {
     }
 }
 
-/// In which direction a pixel mapper maps coordinates.
-pub(crate) enum MappingDirection {
-    /// Every visible pixel is mapped to a matrix pixel.
-    VisibleToMatrix,
-    /// Every matrix pixel is mapped to at most one visible pixel. Visible pixels without a matrix pixel stay off.
-    MatrixToVisible,
-}
-
-/// A pixel mapper is a way for you to map pixels of LED matrixes to a different
-/// layout. If you have an implementation of a [`PixelMapper`], you can give it
-/// to the [`RGBMatrix::apply_pixel_mapper`], which then presents you a canvas
-/// that has the new [`visible_width`], [`visible_height`].
-pub(crate) trait NamedPixelMapper {
-    fn get_size_mapping(
-        &self,
-        matrix_width: usize,
-        matrix_height: usize,
-    ) -> Result<[usize; 2], MatrixCreationError>;
-
-    fn mapping_direction(&self) -> MappingDirection {
-        MappingDirection::VisibleToMatrix
-    }
-
-    /// Used for [`MappingDirection::VisibleToMatrix`].
-    fn map_visible_to_matrix(
-        &self,
-        matrix_width: usize,
-        matrix_height: usize,
-        visible_x: usize,
-        visible_y: usize,
-    ) -> [usize; 2];
-
-    /// Used for [`MappingDirection::MatrixToVisible`]. Returns `None` if the matrix pixel is not visible.
-    fn map_matrix_to_visible(
-        &self,
-        _matrix_width: usize,
-        _matrix_height: usize,
-        _matrix_x: usize,
-        _matrix_y: usize,
-    ) -> Option<[usize; 2]> {
-        None
-    }
-}
-
 struct MirrorPixelMapper {
     direction: MirrorDirection,
 }
 
-impl NamedPixelMapper for MirrorPixelMapper {
-    fn get_size_mapping(
+impl PixelMapper for MirrorPixelMapper {
+    fn size_mapping(
         &self,
         matrix_width: usize,
         matrix_height: usize,
@@ -373,11 +333,11 @@ impl NamedPixelMapper for MirrorPixelMapper {
         matrix_height: usize,
         x: usize,
         y: usize,
-    ) -> [usize; 2] {
-        match self.direction {
+    ) -> Option<[usize; 2]> {
+        Some(match self.direction {
             MirrorDirection::Horizontal => [matrix_width - 1 - x, y],
             MirrorDirection::Vertical => [x, matrix_height - 1 - y],
-        }
+        })
     }
 }
 
@@ -385,8 +345,8 @@ struct RotatePixelMapper {
     rotation: Rotation,
 }
 
-impl NamedPixelMapper for RotatePixelMapper {
-    fn get_size_mapping(
+impl PixelMapper for RotatePixelMapper {
+    fn size_mapping(
         &self,
         matrix_width: usize,
         matrix_height: usize,
@@ -403,13 +363,13 @@ impl NamedPixelMapper for RotatePixelMapper {
         matrix_height: usize,
         x: usize,
         y: usize,
-    ) -> [usize; 2] {
-        match self.rotation {
+    ) -> Option<[usize; 2]> {
+        Some(match self.rotation {
             Rotation::Deg0 => [x, y],
             Rotation::Deg90 => [matrix_width - y - 1, x],
             Rotation::Deg180 => [matrix_width - x - 1, matrix_height - y - 1],
             Rotation::Deg270 => [y, matrix_height - x - 1],
-        }
+        })
     }
 }
 
@@ -432,8 +392,8 @@ impl UArrangeMapper {
     }
 }
 
-impl NamedPixelMapper for UArrangeMapper {
-    fn get_size_mapping(
+impl PixelMapper for UArrangeMapper {
+    fn size_mapping(
         &self,
         matrix_width: usize,
         matrix_height: usize,
@@ -458,7 +418,7 @@ impl NamedPixelMapper for UArrangeMapper {
         matrix_height: usize,
         x: usize,
         y: usize,
-    ) -> [usize; 2] {
+    ) -> Option<[usize; 2]> {
         let panel_height = matrix_height / self.parallel;
         let visible_width = matrix_width / 2;
         let slab_height = 2 * panel_height; // one folded u-shape
@@ -472,8 +432,7 @@ impl NamedPixelMapper for UArrangeMapper {
             // Lower panel of the slab
             [(visible_width - x - 1), (slab_height - y_in_slab - 1)]
         };
-
-        [matrix_x, base_y + matrix_y]
+        Some([matrix_x, base_y + matrix_y])
     }
 }
 
@@ -487,8 +446,8 @@ impl ChainLinkMapper {
     }
 }
 
-impl NamedPixelMapper for ChainLinkMapper {
-    fn get_size_mapping(
+impl PixelMapper for ChainLinkMapper {
+    fn size_mapping(
         &self,
         matrix_width: usize,
         matrix_height: usize,
@@ -502,11 +461,11 @@ impl NamedPixelMapper for ChainLinkMapper {
         matrix_height: usize,
         visible_x: usize,
         visible_y: usize,
-    ) -> [usize; 2] {
-        [
+    ) -> Option<[usize; 2]> {
+        Some([
             visible_x % matrix_width,
             (matrix_height / self.parallel) * (visible_x / matrix_width) + visible_y,
-        ]
+        ])
     }
 }
 
@@ -516,8 +475,8 @@ struct VerticalMapper {
     parallel: usize,
 }
 
-impl NamedPixelMapper for VerticalMapper {
-    fn get_size_mapping(
+impl PixelMapper for VerticalMapper {
+    fn size_mapping(
         &self,
         matrix_width: usize,
         matrix_height: usize,
@@ -534,7 +493,7 @@ impl NamedPixelMapper for VerticalMapper {
         matrix_height: usize,
         x: usize,
         y: usize,
-    ) -> [usize; 2] {
+    ) -> Option<[usize; 2]> {
         let panel_width = matrix_width / self.chain;
         let panel_height = matrix_height / self.parallel;
         // The panel you plug into ends up being the bottom panel while coordinates start from the top panel. You
@@ -546,7 +505,7 @@ impl NamedPixelMapper for VerticalMapper {
         let x_within_panel = x % panel_width;
         let y_within_panel = y % panel_height;
         let needs_flipping = self.z && odd_panel_count == (y / panel_height) % 2;
-        if needs_flipping {
+        Some(if needs_flipping {
             [
                 x_panel_start + panel_width - 1 - x_within_panel,
                 y_panel_start + panel_height - 1 - y_within_panel,
@@ -556,7 +515,7 @@ impl NamedPixelMapper for VerticalMapper {
                 x_panel_start + x_within_panel,
                 y_panel_start + y_within_panel,
             ]
-        }
+        })
     }
 }
 
@@ -566,8 +525,8 @@ struct StackToRowMapper {
     bands: usize,
 }
 
-impl NamedPixelMapper for StackToRowMapper {
-    fn get_size_mapping(
+impl PixelMapper for StackToRowMapper {
+    fn size_mapping(
         &self,
         matrix_width: usize,
         matrix_height: usize,
@@ -581,7 +540,7 @@ impl NamedPixelMapper for StackToRowMapper {
         matrix_height: usize,
         x: usize,
         y: usize,
-    ) -> [usize; 2] {
+    ) -> Option<[usize; 2]> {
         let band_width = matrix_width;
         let band_height = matrix_height / self.bands;
         let band = x / band_width;
@@ -596,7 +555,7 @@ impl NamedPixelMapper for StackToRowMapper {
             src_y = band_height - 1 - src_y;
         }
 
-        [src_x, band * band_height + src_y]
+        Some([src_x, band * band_height + src_y])
     }
 }
 
@@ -636,8 +595,8 @@ impl RemapMapper {
     }
 }
 
-impl NamedPixelMapper for RemapMapper {
-    fn get_size_mapping(
+impl PixelMapper for RemapMapper {
+    fn size_mapping(
         &self,
         matrix_width: usize,
         matrix_height: usize,
@@ -668,7 +627,7 @@ impl NamedPixelMapper for RemapMapper {
         MappingDirection::MatrixToVisible
     }
 
-    fn map_visible_to_matrix(&self, _: usize, _: usize, _: usize, _: usize) -> [usize; 2] {
+    fn map_visible_to_matrix(&self, _: usize, _: usize, _: usize, _: usize) -> Option<[usize; 2]> {
         unreachable!("Remap maps from the matrix to the visible area.")
     }
 
@@ -743,11 +702,11 @@ mod tests {
     ) -> Vec<Vec<[usize; 2]>> {
         let mapper = mapper.create(chain, parallel).unwrap();
         let [w, h] = [32 * chain, 16 * parallel];
-        let [vw, vh] = mapper.get_size_mapping(w, h).unwrap();
+        let [vw, vh] = mapper.size_mapping(w, h).unwrap();
         (0..vh)
             .map(|y| {
                 (0..vw)
-                    .map(|x| mapper.map_visible_to_matrix(w, h, x, y))
+                    .map(|x| mapper.map_visible_to_matrix(w, h, x, y).unwrap())
                     .collect()
             })
             .collect()
@@ -792,19 +751,13 @@ mod tests {
         // Two 32x16 panels in one chain, the second one below the first and upside down.
         let remap = NamedPixelMapperType::from_str("Remap:32,32|0,0n|0,16s").unwrap();
         let mapper = remap.create(2, 1).unwrap();
-        assert_eq!(mapper.get_size_mapping(64, 16).unwrap(), [32, 32]);
+        assert_eq!(mapper.size_mapping(64, 16).unwrap(), [32, 32]);
         // The first panel is the one furthest right in matrix coordinates.
         assert_eq!(mapper.map_matrix_to_visible(64, 16, 32, 0), Some([0, 0]));
         assert_eq!(mapper.map_matrix_to_visible(64, 16, 0, 0), Some([31, 31]));
 
         let outside = NamedPixelMapperType::from_str("Remap:32,16|0,0n|100,0n").unwrap();
-        assert!(
-            outside
-                .create(2, 1)
-                .unwrap()
-                .get_size_mapping(64, 16)
-                .is_err()
-        );
+        assert!(outside.create(2, 1).unwrap().size_mapping(64, 16).is_err());
         let discarded = NamedPixelMapperType::from_str("Remap:32,16|0,0n|0,0x").unwrap();
         assert_eq!(
             discarded
@@ -820,8 +773,8 @@ mod tests {
     fn u_mapper_folds_panels_of_any_width() {
         // Two 40x20 panels in one chain fold into a 40x40 canvas.
         let mapper = NamedPixelMapperType::UMapper.create(2, 1).unwrap();
-        assert_eq!(mapper.get_size_mapping(80, 20).unwrap(), [40, 40]);
-        assert_eq!(mapper.map_visible_to_matrix(80, 20, 0, 0), [40, 0]);
-        assert_eq!(mapper.map_visible_to_matrix(80, 20, 0, 20), [39, 19]);
+        assert_eq!(mapper.size_mapping(80, 20).unwrap(), [40, 40]);
+        assert_eq!(mapper.map_visible_to_matrix(80, 20, 0, 0), Some([40, 0]));
+        assert_eq!(mapper.map_visible_to_matrix(80, 20, 0, 20), Some([39, 19]));
     }
 }

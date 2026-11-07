@@ -19,9 +19,11 @@ Ported from the upstream C++ library:
 - `Canvas::set_pixels`, `Canvas::sub_fill`, `Canvas::serialize`, `Canvas::deserialize`, `Canvas::copy_from` and
   `Canvas::set_luminance_correct`. Solid fills with embedded-graphics use `sub_fill`.
 - `FM6126A` as a name for the `FM6126` panel type.
+- The options `realtime_priority` (run the update thread with `SCHED_FIFO`, off by default), `uncapped_refresh_rate`, `clear_on_vsync` and `input_bits`, and `RGBMatrix::try_request_outputs`.
 
 Merged from upstream:
 
+- `InputReader` and `InputChange` to read the GPIO inputs from any thread, through `RGBMatrix::take_input_reader`.
 - `RGBMatrix::suspend`/`RGBMatrix::is_suspended` to clear the display and pause the update thread until the next `update_on_vsync`.
 - The `min_sys_sleep_microseconds` option to tune how early sleeps wake up.
 - Export the `GpioInitializationError`, `InvalidVariantError`, `InvalidPixelMapperError` and `UpdateThreadError` types, and `Rotation` and `MirrorDirection`. `MatrixCreationError` and `GpioInitializationError` are `#[non_exhaustive]`.
@@ -33,7 +35,6 @@ Merged from upstream:
 - Fix a panic when a pixel mapper makes the canvas taller than six panels, e.g. `Rotate:90` on a long chain or a 1:4 multiplexer with parallel chains.
 - Support the `AdafruitHat`, `Classic` and `ClassicPi1` hardware mappings, which panicked because their output enable pin can't be driven by the PWM hardware. They now use timer based pulses.
 - Only claim the GPIO pins of the parallel chains in use. Previously, e.g. the I2C and UART pins were always turned into outputs.
-- `Canvas::set_brightness` and `Canvas::set_pwm_bits` now carry over to the canvas returned by `RGBMatrix::update_on_vsync` instead of only applying to every other frame.
 - Fix the 64 bit system timer read, which could jump by about 71 minutes when the low half overflowed.
 - Fix the `GBR` and `BRG` LED sequences, which were swapped compared to the upstream library.
 - Fix the vertical blocks of the `P8Outdoor1R1G1B` multiplexer.
@@ -52,7 +53,6 @@ Merged from upstream:
 - Determine the Raspberry Pi model from the device tree if /proc/cpuinfo has no revision, instead of misreading the
   CPU core revision.
 - Report pixel mappers that produce an empty canvas as an error.
-- Limit the queue of GPIO input changes so that it can't grow forever when nobody receives them.
 - Return an error instead of panicking when the user or group name to drop privileges to contains a NUL byte.
 - Fix a SIGBUS on aarch64 by reading the system timer as two 32-bit registers. [#28](https://github.com/EmbersArc/rpi_led_panel/pull/28)
 - Fix automatic chip detection on mainline kernels (through the device tree `compatible` property) and for old-style revision codes with the warranty bit set.
@@ -70,13 +70,13 @@ Merged from upstream:
 - Declare 1.88 as the minimum supported Rust version.
 - Updated dependencies.
 - Share the pixel map and color lookup table between canvases and shrink the pixel map entries.
-- Leave a margin for the OS sleep jitter and busy-wait the rest, to avoid overshooting.
 
 ### Breaking
 
 - `RGBMatrix::new` returns a `Canvas` instead of a `Box<Canvas>`, and `RGBMatrix::update_on_vsync` and `RGBMatrix::update_on_vsync_every` take and return a `Canvas`, so `canvas.as_mut()` becomes `&mut canvas` when drawing.
 - `update_on_vsync` and `update_on_vsync_every` return a `Result` with an `UpdateThreadError` instead of panicking when the update thread shuts down unexpectedly. This replaces `try_update_on_vsync`, `try_update_on_vsync_every` and `MatrixUpdateError`.
-- `receive_new_inputs` returns a `Result<Option<u32>, UpdateThreadError>`. An unexpected shutdown of the update thread is now an error instead of `None`.
+- Move `set_brightness` and `set_pwm_bits` from `Canvas` to `RGBMatrix`, where `RGBMatrix::brightness` and `RGBMatrix::pwm_bits` read them back. `Canvas::brightness` and `Canvas::pwm_bits` are gone. On the canvas the setters only applied to every other frame.
+- Replace `RGBMatrix::receive_new_inputs` with an `InputReader` from `RGBMatrix::take_input_reader`, which can be moved to another thread.
 - Rename `RGBMatrix::get_framerate` to `RGBMatrix::framerate`.
 - `RGBMatrix::new` no longer takes the `requested_inputs` argument. Use the new `input_bits` option of `RGBMatrixConfig` instead, also available as `--input-bits`.
 - `MatrixCreationError::MemoryAccessError` holds the `io::Error`. The variants `TooManyParallelChains` and `InvalidDitherBits` are gone, as `InvalidConfig` reports them.

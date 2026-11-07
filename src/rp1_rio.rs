@@ -7,7 +7,7 @@ use memmap2::{MmapMut, MmapOptions};
 use crate::{
     RGBMatrixConfig,
     canvas::Canvas,
-    config::K_BIT_PLANES,
+    config::BIT_PLANES,
     hardware_mapping::low_pins,
     init_sequence::PanelInit,
     registers::store_barrier,
@@ -38,7 +38,7 @@ pub(crate) struct Rp1Rio {
     registers: RioRegisters,
     layout: Rp1Layout,
     /// For how many pixel clocks each bit plane is shown.
-    active_words: [usize; K_BIT_PLANES],
+    active_words: [usize; BIT_PLANES],
     /// The row address and remaining on-time of the last bit plane of the previous frame, which are shown while
     /// the first bit plane of the next frame is clocked in.
     pending: Option<(u32, usize)>,
@@ -243,7 +243,7 @@ impl RioOutput for RioRegisters {
 
 fn dump_frame(
     layout: &Rp1Layout,
-    active_words: &[usize; K_BIT_PLANES],
+    active_words: &[usize; BIT_PLANES],
     pending: &mut Option<(u32, usize)>,
     canvas: &Canvas,
     pwm_low_bit: usize,
@@ -345,7 +345,7 @@ pub(crate) mod tests {
     use crate::{
         RGBMatrix, RGBMatrixConfig,
         canvas::Canvas,
-        config::K_BIT_PLANES,
+        config::BIT_PLANES,
         rp1::{self, Rp1Layout},
     };
 
@@ -413,7 +413,7 @@ pub(crate) mod tests {
         let h = rp1::tests::regular_pins();
         let (oe, strobe, a, r1, b2) = (h.oe, h.strobe, h.a, h.r1, h.b2);
         let layout = Rp1Layout::new(&config, true).unwrap();
-        let active_words = [3; K_BIT_PLANES];
+        let active_words = [3; BIT_PLANES];
         let mut pending = None;
         let mut ops = Vec::new();
         dump_frame(&layout, &active_words, &mut pending, &canvas, 0, &mut ops);

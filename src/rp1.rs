@@ -8,7 +8,7 @@ use std::fs::read_to_string;
 
 use crate::{
     HardwareMapping, RGBMatrixConfig, RowAddressSetterType,
-    config::K_BIT_PLANES,
+    config::BIT_PLANES,
     hardware_mapping::{GpioBits, low_pins},
     rgb_matrix::MatrixCreationError,
 };
@@ -286,10 +286,7 @@ fn sm5266_direct_bits(h: &AddressPins, row: usize) -> u32 {
 }
 
 /// For how many words of `word_ns` each bit plane stays on.
-pub(crate) fn bitplane_active_words(
-    config: &RGBMatrixConfig,
-    word_ns: f64,
-) -> [usize; K_BIT_PLANES] {
+pub(crate) fn bitplane_active_words(config: &RGBMatrixConfig, word_ns: f64) -> [usize; BIT_PLANES] {
     config
         .bitplane_timings_ns()
         .map(|timing| ((f64::from(timing) / word_ns).ceil() as usize).max(1))

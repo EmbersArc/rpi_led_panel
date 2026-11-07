@@ -106,7 +106,7 @@ impl HardwarePinPulser {
             pwm_registers.push_fifo(self.pulse_periods[bitplane]);
         } else {
             // Keep the actual range as short as possible, as we have to wait for one full period of these in
-            // the zero phase. The hardware can't deal with values < 2, so only do this when we have have
+            // the zero phase. The hardware can't deal with values < 2, so only do this when we have
             // enough of these.
             let period_fraction = self.pulse_periods[bitplane] / 8;
             pwm_registers.set_pwm_pulse_period(period_fraction);
@@ -126,7 +126,7 @@ impl HardwarePinPulser {
         pwm_registers.push_fifo(0);
 
         self.current_pulse = Some(Pulse {
-            start_time: time_registers.get_time(),
+            start_time: time_registers.time(),
             sleep_hint_us: self.sleep_hints_us[bitplane],
         });
         pwm_registers.enable_pwm();
@@ -142,7 +142,7 @@ impl HardwarePinPulser {
             return;
         };
 
-        let already_elapsed_us = time_registers.get_time().saturating_sub(pulse.start_time);
+        let already_elapsed_us = time_registers.time().saturating_sub(pulse.start_time);
         let remaining_time_us = u64::from(pulse.sleep_hint_us).saturating_sub(already_elapsed_us);
         sleep_at_most(Duration::from_micros(remaining_time_us), min_sys_sleep_time);
 

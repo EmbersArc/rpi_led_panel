@@ -10,7 +10,7 @@ use crate::error::InvalidVariantError;
 )]
 #[non_exhaustive]
 pub enum PiChip {
-    /// Model 0 and 1
+    /// Models 0 and 1
     #[strum(serialize = "BCM2708", serialize = "BCM2835")]
     BCM2708,
     /// Models 2 and 3
@@ -106,7 +106,7 @@ impl PiChip {
 
     /// All peripherals can be described by an offset from the Peripheral Base Address. The GPIO pins of the
     /// BCM2712 are not among them.
-    pub(crate) const fn get_peripherals_base(self) -> Option<u64> {
+    pub(crate) const fn peripherals_base(self) -> Option<u64> {
         match self {
             PiChip::BCM2708 => Some(0x2000_0000),
             PiChip::BCM2709 => Some(0x3F00_0000),

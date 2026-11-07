@@ -1,4 +1,6 @@
-use crate::{error::InvalidVariantError, rgb_matrix::MatrixCreationError};
+use crate::{
+    error::InvalidVariantError, pixel_mapper::PixelMapper, rgb_matrix::MatrixCreationError,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumString, strum::VariantNames)]
 #[strum(
@@ -140,8 +142,10 @@ impl MultiplexMapper {
         }
         Ok(())
     }
+}
 
-    pub(crate) fn get_size_mapping(
+impl PixelMapper for MultiplexMapper {
+    fn size_mapping(
         &self,
         matrix_width: usize,
         matrix_height: usize,
@@ -152,7 +156,7 @@ impl MultiplexMapper {
         Ok([visible_width, visible_height])
     }
 
-    pub(crate) fn map_visible_to_matrix(
+    fn map_visible_to_matrix(
         &self,
         _matrix_width: usize,
         _matrix_height: usize,
@@ -174,7 +178,9 @@ impl MultiplexMapper {
             .checked_add(new_y)?;
         Some([matrix_x, matrix_y])
     }
+}
 
+impl MultiplexMapper {
     /// Where a pixel of a single panel is in the electrical layout, or `None` if the layout doesn't cover it.
     fn map_single_panel(&self, x: usize, y: usize) -> Option<[usize; 2]> {
         let rows = self.panel_rows;
@@ -536,6 +542,7 @@ fn p8_outdoor_1r1g1b(x: usize, y: usize) -> Option<[usize; 2]> {
 #[cfg(test)]
 mod tests {
     use super::MultiplexMapperType;
+    use crate::pixel_mapper::PixelMapper;
 
     #[test]
     fn quarter_scan_has_half_the_vertical_stretch() {
@@ -544,7 +551,7 @@ mod tests {
         mapper.edit_rows_cols(&mut rows, &mut cols).unwrap();
         assert_eq!((rows, cols), (8, 128));
         // The panel only uses the upper data lines, so the canvas is as tall as the panel.
-        assert_eq!(mapper.get_size_mapping(128, 8).unwrap(), [32, 16]);
+        assert_eq!(mapper.size_mapping(128, 8).unwrap(), [32, 16]);
         // The panel of the second parallel chain starts after the 8 rows of the first chain.
         assert_eq!(mapper.map_visible_to_matrix(128, 16, 0, 16), Some([24, 8]));
         assert_eq!(mapper.map_visible_to_matrix(128, 8, 0, 0), Some([24, 0]));

@@ -6,7 +6,7 @@ use std::{
 use crate::{
     RGBMatrixConfig,
     color::{CIE1931_LOOKUP, ColorLookup},
-    config::K_BIT_PLANES,
+    config::BIT_PLANES,
     error::InvalidVariantError,
     hardware_mapping::{GpioBits, HardwareMapping},
 };
@@ -58,7 +58,7 @@ impl LedSequence {
     }
 
     /// Returns the GPIO bits that drive `color`: the input at the position of `color` in the sequence.
-    fn get_gpio(
+    fn channel_bits(
         self,
         color: Color,
         red_bits: GpioBits,
@@ -96,9 +96,9 @@ impl PixelDesignator {
         let b = h.panels.blue_bits();
         Self {
             gpio_word: UNUSED_PIXEL,
-            r_bit: sequence.get_gpio(Color::Red, r, g, b),
-            g_bit: sequence.get_gpio(Color::Green, r, g, b),
-            b_bit: sequence.get_gpio(Color::Blue, r, g, b),
+            r_bit: sequence.channel_bits(Color::Red, r, g, b),
+            g_bit: sequence.channel_bits(Color::Green, r, g, b),
+            b_bit: sequence.channel_bits(Color::Blue, r, g, b),
             mask: !0,
         }
     }
@@ -132,7 +132,7 @@ impl PixelDesignatorMap {
             for x in 0..width {
                 let position = y * width + x;
                 let d = &mut map.buffer[position];
-                let offset = (y % double_rows) * (width * K_BIT_PLANES) + x;
+                let offset = (y % double_rows) * (width * BIT_PLANES) + x;
                 d.gpio_word = u32::try_from(offset).expect("Matrix is too large.");
 
                 let panel = y / config.rows;
@@ -143,9 +143,9 @@ impl PixelDesignatorMap {
                     (color_bits.r2, color_bits.g2, color_bits.b2)
                 };
 
-                d.r_bit = config.led_sequence.get_gpio(Color::Red, r, g, b);
-                d.g_bit = config.led_sequence.get_gpio(Color::Green, r, g, b);
-                d.b_bit = config.led_sequence.get_gpio(Color::Blue, r, g, b);
+                d.r_bit = config.led_sequence.channel_bits(Color::Red, r, g, b);
+                d.g_bit = config.led_sequence.channel_bits(Color::Green, r, g, b);
+                d.b_bit = config.led_sequence.channel_bits(Color::Blue, r, g, b);
                 d.mask = !(d.r_bit | d.g_bit | d.b_bit);
             }
         }
@@ -200,7 +200,7 @@ impl PixelDesignatorMap {
             .map(|position| &mut self.buffer[position])
     }
 
-    fn get_pixel_designator(&self) -> PixelDesignator {
+    pub(crate) fn pixel_designator(&self) -> PixelDesignator {
         self.pixel_designator
     }
 
@@ -247,9 +247,9 @@ impl Canvas {
         let mut canvas = Self {
             cols,
             double_rows,
-            bitplane_buffer: vec![0; double_rows * cols * K_BIT_PLANES],
+            bitplane_buffer: vec![0; double_rows * cols * BIT_PLANES],
             shared_mapper,
-            pwm_bits: config.pwm_bits.clamp(1, K_BIT_PLANES),
+            pwm_bits: config.pwm_bits.clamp(1, BIT_PLANES),
             brightness: config.led_brightness.clamp(1, 100),
             luminance_correct: true,
             inverse_colors: config.inverse_colors,
@@ -301,11 +301,11 @@ impl Canvas {
 
     /// The lowest bit plane to show. Depending on if we do dithering, we might not always show the lowest bits.
     pub(crate) fn start_bit(&self, pwm_low_bit: usize) -> usize {
-        (K_BIT_PLANES - self.pwm_bits).max(pwm_low_bit)
+        (BIT_PLANES - self.pwm_bits).max(pwm_low_bit)
     }
 
     fn position_at(&self, double_row: usize, column: usize, bit: usize) -> usize {
-        double_row * (self.cols * K_BIT_PLANES) + bit * self.cols + column
+        double_row * (self.cols * BIT_PLANES) + bit * self.cols + column
     }
 
     /// The GPIO words of one bit plane of a double row, one per column.
@@ -344,16 +344,16 @@ impl Canvas {
         }
         let pos_start = gpio_word as usize;
         let cols = self.cols;
-        let min_bit_plane = K_BIT_PLANES - self.pwm_bits;
+        let min_bit_plane = BIT_PLANES - self.pwm_bits;
 
         // The words of the pixel in the shown bit planes, one every `cols` words. Taking the whole range as one
         // slice checks the bounds once instead of once per plane, still without any unsafe code.
         let first = pos_start + cols * min_bit_plane;
-        let last = pos_start + cols * (K_BIT_PLANES - 1);
+        let last = pos_start + cols * (BIT_PLANES - 1);
         let Some(words) = self.bitplane_buffer.get_mut(first..=last) else {
             return;
         };
-        for (plane, word) in (min_bit_plane..K_BIT_PLANES).zip(words.iter_mut().step_by(cols)) {
+        for (plane, word) in (min_bit_plane..BIT_PLANES).zip(words.iter_mut().step_by(cols)) {
             // All ones if the bit of the color is set in this plane, else zero, without branches.
             let bit = |value: u16| GpioBits::from((value >> plane) & 1).wrapping_neg();
             let color_bits = (bit(red) & r_bit) | (bit(green) & g_bit) | (bit(blue) & b_bit);
@@ -450,7 +450,7 @@ impl Canvas {
             g_bit,
             b_bit,
             ..
-        } = self.shared_mapper.get_pixel_designator();
+        } = self.shared_mapper.pixel_designator();
         let mask = 1 << plane;
         let mut plane_bits = 0;
         if (red & mask) == mask {
@@ -470,7 +470,7 @@ impl Canvas {
         let color = self.map_color(r, g, b);
         let black = self.map_color(0, 0, 0);
 
-        (K_BIT_PLANES - self.pwm_bits..K_BIT_PLANES).for_each(|plane| {
+        (BIT_PLANES - self.pwm_bits..BIT_PLANES).for_each(|plane| {
             let plane_bits = self.plane_bits(color, plane);
             (0..self.double_rows).for_each(|row| {
                 self.row_at_mut(row, 0, plane).fill(plane_bits);
@@ -486,15 +486,12 @@ impl Canvas {
         });
     }
 
-    /// Set PWM bits used for output, between 1 and 11. Default is 11, but if you only deal with simple
-    /// comic-colors, 1 might be sufficient. Lower values require less CPU.
-    ///
-    /// The setting carries over to the canvases returned by [`crate::RGBMatrix::update_on_vsync`].
-    pub fn set_pwm_bits(&mut self, pwm_bits: usize) {
-        let pwm_bits = pwm_bits.clamp(1, K_BIT_PLANES);
+    /// Set PWM bits used for output, between 1 and 11. Set by [`crate::RGBMatrix::set_pwm_bits`].
+    pub(crate) fn set_pwm_bits(&mut self, pwm_bits: usize) {
+        let pwm_bits = pwm_bits.clamp(1, BIT_PLANES);
         // Planes that become visible may still hold data from long ago, so turn them off.
         let black = self.map_color(0, 0, 0);
-        for plane in K_BIT_PLANES - pwm_bits..K_BIT_PLANES - self.pwm_bits.min(pwm_bits) {
+        for plane in BIT_PLANES - pwm_bits..BIT_PLANES - self.pwm_bits.min(pwm_bits) {
             let off_bits = self.plane_bits(black, plane);
             for row in 0..self.double_rows {
                 self.row_at_mut(row, 0, plane).fill(off_bits);
@@ -503,21 +500,15 @@ impl Canvas {
         self.pwm_bits = pwm_bits;
     }
 
-    #[must_use]
-    pub fn pwm_bits(&self) -> usize {
+    #[cfg(test)]
+    pub(crate) fn pwm_bits(&self) -> usize {
         self.pwm_bits
     }
 
-    /// Set the canvas' brightness in percent. Only affects pixels drawn afterwards.
-    ///
-    /// The setting carries over to the canvases returned by [`crate::RGBMatrix::update_on_vsync`].
-    pub fn set_brightness(&mut self, brightness: u8) {
+    /// Set the canvas' brightness in percent. Only affects pixels drawn afterwards. Set by
+    /// [`crate::RGBMatrix::set_brightness`].
+    pub(crate) fn set_brightness(&mut self, brightness: u8) {
         self.brightness = brightness.clamp(1, 100);
-    }
-
-    #[must_use]
-    pub fn brightness(&self) -> u8 {
-        self.brightness
     }
 
     /// Turn the CIE1931 luminance correction on or off. It is on by default and makes the brightness steps
@@ -568,7 +559,7 @@ impl Canvas {
 }
 
 #[cfg(feature = "drawing")]
-pub mod embedded_graphics_support {
+mod embedded_graphics_support {
     use super::Canvas;
     use embedded_graphics::{
         Pixel,
@@ -594,7 +585,7 @@ pub mod embedded_graphics_support {
             I: IntoIterator<Item = Pixel<Self::Color>>,
         {
             for Pixel(coord, color) in pixels {
-                // `DrawTarget` implementation are required to discard any out of bounds pixels without returning
+                // `DrawTarget` implementations are required to discard any out of bounds pixels without returning
                 // an error or causing a panic.
                 if (0..self.width() as i32).contains(&coord.x)
                     && (0..self.height() as i32).contains(&coord.y)
@@ -642,7 +633,7 @@ pub mod embedded_graphics_support {
 #[cfg(test)]
 mod tests {
     use super::{Canvas, Color, LedSequence, PixelDesignator, PixelDesignatorMap};
-    use crate::{RGBMatrixConfig, config::K_BIT_PLANES};
+    use crate::{RGBMatrixConfig, config::BIT_PLANES};
     use std::sync::Arc;
 
     #[test]
@@ -650,7 +641,7 @@ mod tests {
         // Upstream drives each color on the input at the color's position in the sequence.
         let (r, g, b) = (1, 2, 4);
         let bits = |seq: LedSequence| {
-            [Color::Red, Color::Green, Color::Blue].map(|color| seq.get_gpio(color, r, g, b))
+            [Color::Red, Color::Green, Color::Blue].map(|color| seq.channel_bits(color, r, g, b))
         };
         assert_eq!(bits(LedSequence::Rgb), [r, g, b]);
         assert_eq!(bits(LedSequence::Gbr), [b, r, g]);
@@ -671,7 +662,7 @@ mod tests {
         let mut canvas = canvas(&RGBMatrixConfig::default());
         canvas.fill(255, 255, 255);
         canvas.set_pwm_bits(1);
-        canvas.set_pwm_bits(K_BIT_PLANES);
+        canvas.set_pwm_bits(BIT_PLANES);
         let low_plane = canvas.row_at(0, 0, 0);
         assert!(low_plane.iter().all(|word| *word == 0));
     }
@@ -692,7 +683,7 @@ mod tests {
         // Only the bits of the first chain are sent to the panels.
         let chain_bits = config.hardware_mapping.panels.color_bits[0].used_bits();
         // The panels are counted from the Raspberry Pi, so the left out one is on the left of the matrix.
-        for plane in 0..K_BIT_PLANES {
+        for plane in 0..BIT_PLANES {
             let row = canvas.row_at(0, 0, plane);
             assert!(row[..32].iter().all(|word| word & chain_bits == 0));
             assert!(row[32..].iter().all(|word| word & chain_bits == chain_bits));
@@ -741,7 +732,7 @@ mod tests {
             return;
         }
         let [red, green, blue] = canvas.map_color(r, g, b);
-        for plane in K_BIT_PLANES - canvas.pwm_bits..K_BIT_PLANES {
+        for plane in BIT_PLANES - canvas.pwm_bits..BIT_PLANES {
             let pos = designator.gpio_word as usize + canvas.cols * plane;
             let mask = 1 << plane;
             let mut color_bits = 0;
@@ -883,7 +874,7 @@ mod tests {
     fn pwm_bits_are_clamped() {
         let mut canvas = canvas(&RGBMatrixConfig::default());
         canvas.set_pwm_bits(20);
-        assert_eq!(canvas.pwm_bits(), K_BIT_PLANES);
+        assert_eq!(canvas.pwm_bits(), BIT_PLANES);
         canvas.set_pwm_bits(0);
         assert_eq!(canvas.pwm_bits(), 1);
     }
