@@ -1,26 +1,16 @@
+use std::time::Duration;
+
 use argh::FromArgs;
 
 use crate::{
     HardwareMapping, PiChip, canvas::LedSequence, init_sequence::PanelType,
     multiplex_mapper::MultiplexMapperType, named_pixel_mapper::NamedPixelMapperType,
-    rgb_matrix::MatrixCreationError, row_address_setter::RowAddressSetterType,
+    row_address_setter::RowAddressSetterType,
 };
 
 /// Typically, a HUB75 panel is split in two half displays, so that a 1:16 multiplexing actually multiplexes
 /// over two half displays and gives 32 lines.
 pub(crate) const SUB_PANELS: usize = 2;
-
-/// The row address lines A to E can select up to 32 double rows.
-const MAX_DOUBLE_ROWS: usize = 32;
-
-/// The PWM clock divider is a quarter of the LSB time and needs to be at least 1.
-const MIN_PWM_LSB_NANOSECONDS: u32 = 4;
-
-/// Well above any useful value, and below the 16384 at which the PWM clock divider overflows its 12 bits.
-const MAX_PWM_LSB_NANOSECONDS: u32 = 10_000;
-
-/// The display update has dither sequences for up to this many bits.
-const MAX_DITHER_BITS: usize = 2;
 
 /// Maximum usable bit planes. 11 bits seems to be a sweet spot in which we still get somewhat useful refresh
 /// rate and have good color richness. This is the default setting. However, in low-light situations, we want
@@ -39,9 +29,14 @@ pub struct RGBMatrixConfig {
     /// the number of display columns. Default: 64
     #[argh(option, default = "64")]
     pub cols: usize,
-    /// the display refresh rate. Default: 120
+    /// the display refresh rate, between 1 and 100000. Default: 120
     #[argh(option, default = "120")]
     pub refresh_rate: usize,
+    /// refresh the panels as fast as possible instead of waiting for the next frame of the refresh rate, which
+    /// is then ignored. This uses the whole core and makes the refresh rate depend on the configuration.
+    /// Default: false
+    #[argh(option, default = "false")]
+    pub uncapped_refresh_rate: bool,
     /// the Raspberry Pi chip model e.g. "BCM2711", Default: automatic
     #[argh(option)]
     pub pi_chip: Option<PiChip>,
@@ -64,12 +59,19 @@ pub struct RGBMatrixConfig {
     /// case, you want to slow down writing to GPIO. Zero for this parameter means 'no slowdown'. The default
     /// 1 typically works fine, but often you have to even go further by setting it to 2. If you have a
     /// Raspberry Pi with a slower processor (Model A, A+, B+, Zero), then a value of 0 might work and is
-    /// desirable. A Raspberry Pi3 or Pi4 might even need higher values for the panels to be happy.
+    /// desirable. A Raspberry Pi3 or Pi4 might even need higher values for the panels to be happy. On ARMv7 and
+    /// newer, -1 waits for a memory barrier instead, which can be faster than 1 while still being stable. On a
+    /// Raspberry Pi 5, this divides the pixel clock instead. Values between -1 and 60 are allowed.
     /// Default: automatic
     #[argh(option)]
-    pub slowdown: Option<u32>,
-    /// lower values reduce CPU usage but can make flickers more likely.
-    /// Default: 100
+    pub slowdown: Option<i32>,
+    /// use the PWM hardware for exact timing of the LED on-time. This requires the output enable to be on GPIO 18
+    /// or 12, otherwise the timing is done in software. Turn it off if the hardware PWM is needed for something
+    /// else, like sound. Default: true
+    #[argh(option, default = "true")]
+    pub hardware_pulse: bool,
+    /// lower values reduce CPU usage but can make flickers more likely: waits wake up this early and busy wait
+    /// the rest. Default: 100
     #[argh(option, default = "100")]
     pub min_sys_sleep_microseconds: u64,
     /// use interlaced scan instead of progressive scan
@@ -90,7 +92,7 @@ pub struct RGBMatrixConfig {
     #[argh(option, default = "1")]
     pub parallel: usize,
     /// typically left empty, but some panels need a particular initialization sequence. This can be e.g.
-    /// "FM6126" or "FM6127" for those panel types.
+    /// "FM6126A" for that particular panel type.
     #[argh(option)]
     pub panel_type: Option<PanelType>,
     /// the kind of multiplexing mapper.
@@ -108,8 +110,33 @@ pub struct RGBMatrixConfig {
     /// brightness in percent. Default: 100
     #[argh(option, default = "100")]
     pub led_brightness: u8,
+    /// invert all colors, for panels that light up the LEDs on a low signal. Default: false
+    #[argh(option, default = "false")]
+    pub inverse_colors: bool,
+    /// print the refresh rate to the terminal. Default: false
+    #[argh(option, default = "false")]
+    pub show_refresh: bool,
+    /// busy-wait for the end of the frame to get exact refresh rates. Turning this off reduces the CPU usage, but
+    /// makes the refresh rate less stable. Default: true
+    #[argh(option, default = "true")]
+    pub busy_waiting: bool,
+    /// run the refresh thread with the real-time SCHED_FIFO policy at this priority (1 to 99) instead of the
+    /// highest normal priority (nice -20). This also disables most of the kernel's real-time throttling, so
+    /// only use it with the refresh core isolated (`isolcpus=3` in /boot/firmware/cmdline.txt on a 4 core Pi):
+    /// otherwise the thread can starve everything else scheduled on that core, including kernel threads, which
+    /// can stall the system or trigger the watchdog. Needs root or CAP_SYS_NICE. Default: off
+    #[argh(option)]
+    pub realtime_priority: Option<u8>,
+    /// clear the canvas that `RGBMatrix::update_on_vsync` returns. Turn it off if every frame redraws all
+    /// pixels anyway: the returned canvas then still holds an older frame. Default: true
+    #[argh(option, default = "true")]
+    pub clear_on_vsync: bool,
+    /// on a Raspberry Pi 5, use the PIO state machine of the RP1 I/O controller to clock out the data, instead of
+    /// setting the GPIO pins from the CPU. This needs the kernel's PIO driver (/dev/pio0). Default: false
+    #[argh(option, default = "false")]
+    pub rp1_pio: bool,
     /// GPIO pins to read as inputs, as a decimal bitmask in which bit n stands for GPIO n. Pins that the
-    /// matrix uses itself are skipped. Default: 0
+    /// matrix uses itself are skipped. GPIO inputs are not supported on the Raspberry Pi 5. Default: 0
     #[argh(option, default = "0")]
     pub input_bits: u32,
     /// keep running as root instead of dropping privileges after initialization
@@ -123,85 +150,34 @@ pub struct RGBMatrixConfig {
     pub drop_priv_group: String,
 }
 
+/// The highest refresh rate that is accepted. Faster frames than 10 µs are not possible anyway.
+pub(crate) const MAX_REFRESH_RATE: usize = 100_000;
+
 impl RGBMatrixConfig {
+    /// How long each frame should take, or `None` to refresh as fast as possible.
+    pub(crate) fn frame_time_target(&self) -> Option<Duration> {
+        if self.uncapped_refresh_rate {
+            return None;
+        }
+        // Validated to be between 1 and `MAX_REFRESH_RATE`, so this neither truncates nor divides by zero.
+        let rate = self.refresh_rate.clamp(1, MAX_REFRESH_RATE) as u64;
+        Some(Duration::from_nanos(1_000_000_000 / rate))
+    }
+
     pub(crate) const fn double_rows(&self) -> usize {
         self.rows / SUB_PANELS
     }
 
-    /// Reject options that the display update or the multiplex mapper can't handle. Multiplexing divides the
-    /// rows by its `stretch_factor`, so they need to stay a multiple of [`SUB_PANELS`] after that.
-    pub(crate) fn validate(&self, stretch_factor: usize) -> Result<(), MatrixCreationError> {
-        let rows_step = SUB_PANELS * stretch_factor;
-        let max_rows = MAX_DOUBLE_ROWS * rows_step;
-        if !(rows_step..=max_rows).contains(&self.rows) || !self.rows.is_multiple_of(rows_step) {
-            return Err(MatrixCreationError::InvalidConfig(format!(
-                "rows needs to be a multiple of {rows_step} from {rows_step} to {max_rows}, but is {}.",
-                self.rows
-            )));
-        }
-
-        for (name, value) in [
-            ("cols", self.cols),
-            ("chain_length", self.chain_length),
-            ("parallel", self.parallel),
-            ("refresh_rate", self.refresh_rate),
-        ] {
-            if value == 0 {
-                return Err(MatrixCreationError::InvalidConfig(format!(
-                    "{name} needs to be at least 1."
-                )));
+    /// How long the LEDs are on for each bit plane. The lowest bits are dithered and show for the same time.
+    pub(crate) fn bitplane_timings_ns(&self) -> [u32; BIT_PLANES] {
+        let mut timing_ns = self.pwm_lsb_nanoseconds;
+        std::array::from_fn(|b| {
+            let timing = timing_ns;
+            if b >= self.dither_bits {
+                timing_ns = timing_ns.saturating_mul(2);
             }
-        }
-
-        if let Some(multiplexing) = self.multiplexing {
-            let [rows, cols] = multiplexing.supported_panel_size();
-            for (name, value, supported) in [("rows", self.rows, rows), ("cols", self.cols, cols)] {
-                if !supported.contains(value) {
-                    return Err(MatrixCreationError::InvalidConfig(format!(
-                        "{name} needs to be {supported} for {multiplexing:?} multiplexing, but is {value}."
-                    )));
-                }
-            }
-        }
-
-        let max_parallel = self.hardware_mapping.max_parallel_chains();
-        if self.parallel > max_parallel {
-            return Err(MatrixCreationError::InvalidConfig(format!(
-                "parallel needs to be at most {max_parallel} for this hardware mapping, but is {}.",
-                self.parallel
-            )));
-        }
-
-        if !(MIN_PWM_LSB_NANOSECONDS..=MAX_PWM_LSB_NANOSECONDS).contains(&self.pwm_lsb_nanoseconds)
-        {
-            return Err(MatrixCreationError::InvalidConfig(format!(
-                "pwm_lsb_nanoseconds needs to be from {MIN_PWM_LSB_NANOSECONDS} to {MAX_PWM_LSB_NANOSECONDS}, but is {}.",
-                self.pwm_lsb_nanoseconds
-            )));
-        }
-
-        if !(1..=BIT_PLANES).contains(&self.pwm_bits) {
-            return Err(MatrixCreationError::InvalidConfig(format!(
-                "pwm_bits needs to be from 1 to {BIT_PLANES}, but is {}.",
-                self.pwm_bits
-            )));
-        }
-
-        if !(1..=100).contains(&self.led_brightness) {
-            return Err(MatrixCreationError::InvalidConfig(format!(
-                "led_brightness needs to be from 1 to 100, but is {}.",
-                self.led_brightness
-            )));
-        }
-
-        if self.dither_bits > MAX_DITHER_BITS {
-            return Err(MatrixCreationError::InvalidConfig(format!(
-                "dither_bits needs to be at most {MAX_DITHER_BITS}, but is {}.",
-                self.dither_bits
-            )));
-        }
-
-        Ok(())
+            timing
+        })
     }
 }
 
@@ -212,10 +188,12 @@ impl Default for RGBMatrixConfig {
             rows: 64,
             cols: 64,
             refresh_rate: 120,
+            uncapped_refresh_rate: false,
             pi_chip: None,
             pwm_bits: 11,
             pwm_lsb_nanoseconds: 130,
             slowdown: None,
+            hardware_pulse: true,
             min_sys_sleep_microseconds: 100,
             interlaced: false,
             dither_bits: 0,
@@ -227,6 +205,12 @@ impl Default for RGBMatrixConfig {
             row_setter: RowAddressSetterType::Direct,
             led_sequence: LedSequence::Rgb,
             led_brightness: 100,
+            inverse_colors: false,
+            show_refresh: false,
+            busy_waiting: true,
+            realtime_priority: None,
+            clear_on_vsync: true,
+            rp1_pio: false,
             input_bits: 0,
             no_drop_privs: false,
             drop_priv_user: String::from("daemon"),

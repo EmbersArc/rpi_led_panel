@@ -1,4 +1,4 @@
-use crate::{RGBMatrixConfig, error::InvalidVariantError, gpio::Gpio};
+use crate::{RGBMatrixConfig, error::InvalidVariantError, gpio::Gpio, hardware_mapping::GpioBits};
 
 /// How a panel selects the row to show.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumString, strum::VariantNames)]
@@ -18,6 +18,8 @@ pub enum RowAddressSetterType {
     ABCShiftRegister,
     /// SM5266 shifters that are set through the lines A to C, with the lines D and E selecting the active shifter.
     SM5266,
+    /// A B707 shift register that advances by one row on every clock, with a high bit shifted in for the first row.
+    B707ShiftRegister,
 }
 
 impl RowAddressSetterType {
@@ -33,6 +35,9 @@ impl RowAddressSetterType {
                 RowAddressSetter::shift_register(config, h.c, true)
             }
             RowAddressSetterType::SM5266 => RowAddressSetter::sm5266(config),
+            RowAddressSetterType::B707ShiftRegister => {
+                RowAddressSetter::b707_shift_register(config)
+            }
         }
     }
 }
@@ -40,7 +45,7 @@ impl RowAddressSetterType {
 /// Different panel types use different techniques to set the row address.
 enum RowWiring {
     Direct {
-        row_lookup: [u32; 32],
+        row_lookup: [GpioBits; 32],
     },
     /// ABC Shifter + DE direct: sets bits ABC using
     /// an 8 bit shifter and DE directly. The panel this works with has 8 SM5266
@@ -53,14 +58,22 @@ enum RowWiring {
     /// BK, DIN and DCK are the designations on the SM5266P datasheet.
     /// BK = Enable Input, DIN = Serial In, DCK = Clock
     SM5266 {
-        row_lookup: [u32; 32],
-        bk: u32,
-        din: u32,
-        dck: u32,
+        row_lookup: [GpioBits; 32],
+        bk: GpioBits,
+        din: GpioBits,
+        dck: GpioBits,
+    },
+    /// Panels with a B707 shift register that advances by one row on every clock. A high bit is shifted in for
+    /// the first row, which then moves on with every following row.
+    /// BK = Enable Input, DIN = Serial In, DCK = Clock
+    B707ShiftRegister {
+        bk: GpioBits,
+        din: GpioBits,
+        dck: GpioBits,
     },
     ShiftRegister {
-        clock: u32,
-        data: u32,
+        clock: GpioBits,
+        data: GpioBits,
         double_rows: usize,
         /// Data and clock are inverted.
         inverted: bool,
@@ -77,20 +90,20 @@ enum RowWiring {
     /// Line C  | 1 | 1 | 0 | 1
     /// Line D  | 1 | 1 | 1 | 0
     DirectABCDLine {
-        row_lines: [u32; 4],
+        row_lines: [GpioBits; 4],
     },
 }
 
 /// Selects the row to show. A row stays selected for all of its bit planes, so the pins are only written when the
 /// row changes.
 pub(crate) struct RowAddressSetter {
-    row_mask: u32,
+    row_mask: GpioBits,
     last_row: Option<usize>,
     wiring: RowWiring,
 }
 
 impl RowAddressSetter {
-    fn new(row_mask: u32, wiring: RowWiring) -> Self {
+    fn new(row_mask: GpioBits, wiring: RowWiring) -> Self {
         Self {
             row_mask,
             last_row: None,
@@ -112,7 +125,7 @@ impl RowAddressSetter {
 
         // To avoid the bit-fiddle in the critical path, utilize
         // a lookup-table for all possible rows.
-        let mut row_lookup = [0u32; 32];
+        let mut row_lookup = [0; 32];
         for (i, row_address) in row_lookup.iter_mut().enumerate().take(double_rows) {
             *row_address |= if i & 0b00001 != 0 { h.a } else { 0 };
             *row_address |= if i & 0b00010 != 0 { h.b } else { 0 };
@@ -134,7 +147,7 @@ impl RowAddressSetter {
         if config.double_rows() > 16 {
             row_mask |= h.e;
         }
-        let mut row_lookup = [0u32; 32];
+        let mut row_lookup = [0; 32];
         for (i, row_address) in row_lookup.iter_mut().enumerate().take(config.double_rows()) {
             *row_address |= if i & 0x08 != 0 { h.d } else { 0 };
             *row_address |= if i & 0x10 != 0 { h.e } else { 0 };
@@ -148,7 +161,7 @@ impl RowAddressSetter {
         Self::new(row_mask, wiring)
     }
 
-    fn shift_register(config: &RGBMatrixConfig, data: u32, inverted: bool) -> Self {
+    fn shift_register(config: &RGBMatrixConfig, data: GpioBits, inverted: bool) -> Self {
         let clock = config.hardware_mapping.a;
         let wiring = RowWiring::ShiftRegister {
             clock,
@@ -157,6 +170,17 @@ impl RowAddressSetter {
             inverted,
         };
         Self::new(clock | data, wiring)
+    }
+
+    fn b707_shift_register(config: &RGBMatrixConfig) -> Self {
+        let h = config.hardware_mapping;
+        assert!(config.double_rows() <= 32); // designed for up to 1/32 panel
+        let wiring = RowWiring::B707ShiftRegister {
+            bk: h.b,
+            din: h.c,
+            dck: h.a,
+        };
+        Self::new(h.a | h.b | h.c, wiring)
     }
 
     fn direct_abcd_line(config: &RGBMatrixConfig) -> Self {
@@ -172,12 +196,14 @@ impl RowAddressSetter {
         Self::new(h.a | h.b | h.c | h.d, wiring)
     }
 
-    pub(crate) fn used_bits(&self) -> u32 {
+    pub(crate) fn used_bits(&self) -> GpioBits {
         self.row_mask
     }
 
     pub(crate) fn set_row_address(&mut self, gpio: &mut Gpio, row: usize) {
-        if self.last_row == Some(row) {
+        // The inverted shift register (`ABCShiftRegister`) always shifts in the address, like the C++ library.
+        let always_shift = matches!(self.wiring, RowWiring::ShiftRegister { inverted: true, .. });
+        if !always_shift && self.last_row == Some(row) {
             return;
         }
         match self.wiring {
@@ -204,6 +230,18 @@ impl RowAddressSetter {
                 gpio.clear_bits(bk); // Disable serial input to keep unwanted bits out of the shifters.
                 // Set bits D and E to enable the proper shifter to display the selected row.
                 gpio.write_masked_bits(row_lookup[row], self.row_mask);
+            }
+            RowWiring::B707ShiftRegister { bk, din, dck } => {
+                gpio.set_bits(bk); // Enable serial input for the shifter.
+                if row == 0 {
+                    gpio.set_bits(din);
+                } else {
+                    gpio.clear_bits(din);
+                }
+                gpio.set_bits(dck);
+                gpio.set_bits(dck); // Longer clock time; tested with Pi3
+                gpio.clear_bits(dck);
+                gpio.clear_bits(bk); // Disable serial input to keep unwanted bits out of the shifters.
             }
             RowWiring::ShiftRegister {
                 clock,

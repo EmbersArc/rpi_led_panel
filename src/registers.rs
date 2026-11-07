@@ -1,20 +1,28 @@
-use std::{fs, io, rc::Rc};
+use std::{
+    fs::{self, File},
+    io,
+    rc::Rc,
+    sync::Mutex,
+};
 
-use memmap2::{MmapOptions, MmapRaw};
+use memmap2::{MmapMut, MmapOptions};
 
-use crate::{chip::PiChip, gpio_bits};
+use crate::{
+    chip::PiChip,
+    hardware_mapping::{GpioBits, low_pins},
+};
 
 // See https://elinux.org/BCM2835_registers
 
 struct MmapPtr<T> {
     ptr: *mut T,
     /// We need to hold on to the map.
-    _map_ref: Rc<MmapRaw>,
+    _map_ref: Rc<MmapMut>,
 }
 
 impl<T> MmapPtr<T> {
-    fn new(map: Rc<MmapRaw>, byte_offset: usize) -> Self {
-        let ptr = unsafe { map.as_mut_ptr().add(byte_offset).cast::<T>() };
+    fn new(map: Rc<MmapMut>, byte_offset: usize) -> Self {
+        let ptr = unsafe { map.as_ptr().add(byte_offset) as *mut T };
         Self { ptr, _map_ref: map }
     }
 
@@ -43,7 +51,7 @@ struct GPIOFunctionSelectRegisters {
 }
 
 impl GPIOFunctionSelectRegisters {
-    fn new(map: Rc<MmapRaw>, byte_offset: usize) -> Self {
+    fn new(map: Rc<MmapMut>, byte_offset: usize) -> Self {
         let registers =
             std::array::from_fn(|index| MmapPtr::new(map.clone(), byte_offset + index * 4));
         Self { registers }
@@ -87,23 +95,65 @@ impl GPIOFunction {
     }
 }
 
-fn mmap_bcm_register(chip: PiChip, offset: u64, size_bytes: usize) -> io::Result<Rc<MmapRaw>> {
-    let file = fs::OpenOptions::new()
+/// Maps a register block of the BCM peripherals through `/dev/mem`, shared by the registers in it.
+pub(crate) fn mmap_bcm_register(
+    chip: PiChip,
+    offset: u64,
+    size_bytes: usize,
+) -> io::Result<Rc<MmapMut>> {
+    mmap_bcm_register_unshared(chip, offset, size_bytes).map(Rc::new)
+}
+
+/// Opens `/dev/mem`, which needs root privileges (CAP_SYS_RAWIO).
+pub(crate) fn open_dev_mem() -> io::Result<File> {
+    fs::OpenOptions::new()
         .read(true)
         .write(true)
-        .open("/dev/mem")?;
-    let base = chip.peripherals_base();
-    let map = MmapOptions::new()
-        .offset(base + offset)
-        .len(size_bytes)
-        .map_raw(&file)?;
-    Ok(Rc::new(map))
+        .open("/dev/mem")
+}
+
+fn mmap_bcm_register_unshared(chip: PiChip, offset: u64, size_bytes: usize) -> io::Result<MmapMut> {
+    mmap_bcm_register_from(&open_dev_mem()?, chip, offset, size_bytes)
+}
+
+/// Maps a register block from an already opened `/dev/mem`. The privileges are only checked when opening it, so
+/// this also works after they were dropped.
+fn mmap_bcm_register_from(
+    dev_mem: &File,
+    chip: PiChip,
+    offset: u64,
+    size_bytes: usize,
+) -> io::Result<MmapMut> {
+    let base = chip.peripherals_base().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::Unsupported,
+            "The chip has no BCM peripherals for the GPIO pins.",
+        )
+    })?;
+    // SAFETY: the mapping is of device memory that nothing else in this process maps as Rust objects; it is only
+    // accessed through volatile reads and writes of whole registers within `size_bytes`.
+    unsafe {
+        MmapOptions::new()
+            .offset(base + offset)
+            .len(size_bytes)
+            .map_mut(dev_mem)
+    }
 }
 
 pub(crate) struct GPIORegisters {
     clr0: MmapPtr<u32>,
     set0: MmapPtr<u32>,
     lvl0: MmapPtr<u32>,
+    /// The registers for the pins above 31.
+    #[cfg(feature = "wide-gpio")]
+    clr1: MmapPtr<u32>,
+    #[cfg(feature = "wide-gpio")]
+    set1: MmapPtr<u32>,
+    #[cfg(feature = "wide-gpio")]
+    lvl1: MmapPtr<u32>,
+    /// Only write the registers for the pins above 31 if they are used, as each write takes time.
+    #[cfg(feature = "wide-gpio")]
+    uses_high_bits: bool,
     function_select: GPIOFunctionSelectRegisters,
 }
 
@@ -113,40 +163,121 @@ impl GPIORegisters {
         let clr0 = MmapPtr::new(map.clone(), GP_CLR0);
         let set0 = MmapPtr::new(map.clone(), GP_SET0);
         let lvl0 = MmapPtr::new(map.clone(), GP_LEV0);
+        #[cfg(feature = "wide-gpio")]
+        let (clr1, set1, lvl1) = (
+            MmapPtr::new(map.clone(), GP_CLR0 + 4),
+            MmapPtr::new(map.clone(), GP_SET0 + 4),
+            MmapPtr::new(map.clone(), GP_LEV0 + 4),
+        );
         let function_select = GPIOFunctionSelectRegisters::new(map, GP_FSEL0);
         Ok(Self {
             clr0,
             set0,
             lvl0,
+            #[cfg(feature = "wide-gpio")]
+            clr1,
+            #[cfg(feature = "wide-gpio")]
+            set1,
+            #[cfg(feature = "wide-gpio")]
+            lvl1,
+            #[cfg(feature = "wide-gpio")]
+            uses_high_bits: false,
             function_select,
         })
     }
 
-    pub(crate) fn write_clr_bits(&mut self, value: u32) {
-        self.clr0.write(value);
+    /// Marks the pins as used, which might need the registers for the pins above 31.
+    pub(crate) fn use_bits(&mut self, _bits: GpioBits) {
+        #[cfg(feature = "wide-gpio")]
+        {
+            self.uses_high_bits |= _bits >> 32 != 0;
+        }
     }
 
-    pub(crate) fn write_set_bits(&mut self, value: u32) {
-        self.set0.write(value);
+    pub(crate) fn write_clr_bits(&mut self, value: GpioBits) {
+        self.clr0.write(low_pins(value));
+        #[cfg(feature = "wide-gpio")]
+        if self.uses_high_bits {
+            self.clr1.write((value >> 32) as u32);
+        }
+    }
+
+    /// Writes nothing, which takes as long as one real write. This only writes the register of the low pins, so
+    /// that a delay takes as long with the pins above 31 in use as without.
+    #[inline(always)]
+    pub(crate) fn write_nothing(&mut self) {
+        self.clr0.write(0);
+    }
+
+    pub(crate) fn write_set_bits(&mut self, value: GpioBits) {
+        self.set0.write(low_pins(value));
+        #[cfg(feature = "wide-gpio")]
+        if self.uses_high_bits {
+            self.set1.write((value >> 32) as u32);
+        }
     }
 
     pub(crate) fn select_function(&mut self, pin: u8, function: GPIOFunction) {
         self.function_select.set_function(pin, function);
     }
 
-    /// Select the function for all pins whose bits are set.
-    pub(crate) fn select_function_for_bits(&mut self, bits: u32, function: GPIOFunction) {
-        for pin in 0..u32::BITS as u8 {
-            if bits & gpio_bits!(pin) != 0 {
-                self.select_function(pin, function);
-            }
-        }
-    }
-
-    pub(crate) fn read_pin_level0(&self) -> u32 {
+    pub(crate) fn read_pin_levels(&self) -> GpioBits {
+        #[cfg(feature = "wide-gpio")]
+        return GpioBits::from(self.lvl0.read()) | (GpioBits::from(self.lvl1.read()) << 32);
+        #[cfg(not(feature = "wide-gpio"))]
         self.lvl0.read()
     }
 }
+
+/// The GPIO set and clear registers for the outputs that the user controls. Unlike [`GPIORegisters`], these
+/// can be used from any thread.
+pub(crate) struct UserGpioOutputs {
+    map: Mutex<MmapMut>,
+}
+
+impl UserGpioOutputs {
+    /// Maps the registers from `dev_mem`, which can be opened before the privileges are dropped.
+    pub(crate) fn new(dev_mem: &File, chip: PiChip) -> io::Result<Self> {
+        Ok(Self {
+            map: Mutex::new(mmap_bcm_register_from(
+                dev_mem,
+                chip,
+                GP_OFFSET,
+                GP_SIZE_BYTES,
+            )?),
+        })
+    }
+
+    /// Sets the bits in `mask` to the values in `value`.
+    pub(crate) fn write_masked_bits(&self, value: u32, mask: u32) {
+        let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
+        let base = map.as_mut_ptr();
+        unsafe {
+            base.add(GP_CLR0)
+                .cast::<u32>()
+                .write_volatile(!value & mask);
+            base.add(GP_SET0).cast::<u32>().write_volatile(value & mask);
+        }
+    }
+}
+
+/// Waits until all previous writes to the GPIO registers are done.
+#[inline(always)]
+pub(crate) fn store_barrier() {
+    #[cfg(any(
+        target_arch = "aarch64",
+        all(target_arch = "arm", target_feature = "v7")
+    ))]
+    unsafe {
+        std::arch::asm!("dsb st", options(nostack, preserves_flags));
+    }
+}
+
+/// Whether [`store_barrier`] does anything on this architecture.
+pub(crate) const STORE_BARRIER_SUPPORTED: bool = cfg!(any(
+    target_arch = "aarch64",
+    all(target_arch = "arm", target_feature = "v7")
+));
 
 // System Timer
 const ST_OFFSET: u64 = 0x3000;
@@ -155,11 +286,6 @@ const ST_CLO: usize = 0x4;
 const ST_CHI: usize = 0x8;
 
 // Time measurement.
-//
-// CLO and CHI are read as two separate 32-bit registers. Reading them as one 8-byte value starting at
-// CLO (offset 4) compiles to a single 64-bit load from an address that is only 4-byte aligned, which
-// raises SIGBUS (BUS_ADRALN) on 64-bit Raspberry Pi OS. High-low-high makes the pair consistent if the
-// low word wraps between the reads.
 pub(crate) struct TimeRegisters {
     low: MmapPtr<u32>,
     high: MmapPtr<u32>,
@@ -173,8 +299,11 @@ impl TimeRegisters {
         Ok(Self { low, high })
     }
 
+    /// Time in microseconds from the free running 64 bit system timer.
     #[inline]
     pub(crate) fn time(&self) -> u64 {
+        // The two halves can't be read at once. If the low half overflowed in between the reads, the high half
+        // changes and we read again.
         loop {
             let high = self.high.read();
             let low = self.low.read();
@@ -260,7 +389,14 @@ const CM_PWMCTL: usize = 0xA0;
 const CM_PWMDIV: usize = 0xA4;
 const CM_PWMCTL_ENAB: u32 = 0x1 << 4;
 const CM_PWMCTL_KILL: u32 = 0x1 << 5;
-const CM_SRC_PLLD: u32 = 6; /* 500.0 MHz */
+/// PLLD, which runs at 500 MHz on the BCM2835/6/7. The PWM divider in `HardwarePinPulser` assumes 500 MHz.
+///
+/// Known limitation: on the BCM2711 (Raspberry Pi 4) PLLD (`plld_per`) is reported to run at 750 MHz, which would
+/// make the hardware pulses about 2/3 as long as `pwm_lsb_nanoseconds` asks for (as in upstream, which assumes
+/// 500 MHz as well). This is not corrected here: the frequency depends on the firmware and could not be verified
+/// on hardware, and the panels may be tuned to the current behaviour. The Raspberry Pi 1 to 3 (and Zero 2 W) are
+/// not affected.
+const CM_SRC_PLLD: u32 = 6;
 
 /// Set the clock source.
 const fn cm_ctl_src(x: u32) -> u32 {

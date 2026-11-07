@@ -7,7 +7,8 @@
 //! `embedded_graphics` crate.
 //!
 //! Accessing the GPIO pins needs root privileges, which are dropped after the setup unless
-//! [`RGBMatrixConfig::no_drop_privs`] is set.
+//! [`RGBMatrixConfig::no_drop_privs`] is set. Warnings and suggestions are reported through the [`log`] crate,
+//! so a logger such as `env_logger` is needed to see them.
 //!
 //! This moves a red pixel along the top row of a 64x32 panel:
 //!
@@ -27,6 +28,7 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
+mod backend;
 mod canvas;
 mod chip;
 mod color;
@@ -43,6 +45,9 @@ mod pixel_mapper;
 mod registers;
 mod rgb_matrix;
 mod row_address_setter;
+mod rp1;
+mod rp1_pio;
+mod rp1_rio;
 mod utils;
 
 pub use canvas::{Canvas, LedSequence};
@@ -54,7 +59,7 @@ pub use hardware_mapping::HardwareMapping;
 pub use init_sequence::PanelType;
 pub use inputs::{InputChange, InputReader};
 pub use multiplex_mapper::MultiplexMapperType;
-pub use named_pixel_mapper::{MirrorDirection, NamedPixelMapperType, Rotation};
+pub use named_pixel_mapper::{MirrorDirection, NamedPixelMapperType, RemapLayout, Rotation};
 pub use rgb_matrix::{MatrixCreationError, RGBMatrix, UpdateThreadError};
 pub use row_address_setter::RowAddressSetterType;
 

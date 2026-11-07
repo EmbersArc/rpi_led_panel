@@ -2,7 +2,7 @@
 name = "rpi-led-panel"
 version = "0.9.1"
 edition = "2024"
-rust-version = "1.87"
+rust-version = "1.88"
 license = "GPL-3.0"
 authors = ["Sven Niederberger <s-niederberger@outlook.com>"]
 description = "Control LED matrices with a Raspberry Pi."
@@ -25,6 +25,8 @@ name = "rotating_square"
 [features]
 default = ["drawing"]
 drawing = ["embedded-graphics"]
+# Use the GPIO pins above 31 of the Compute Module, for up to 6 parallel chains. Doubles the memory per canvas.
+wide-gpio = []
 
 [dependencies]
 argh = "0.1.19"

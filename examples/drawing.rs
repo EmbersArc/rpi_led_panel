@@ -15,8 +15,8 @@ fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     let config: RGBMatrixConfig = argh::from_env();
-
     let (mut matrix, mut canvas) = RGBMatrix::new(config).expect("Matrix initialization failed");
+    // The canvas size includes chained panels and pixel mappers.
     let rows = canvas.height() as i32;
     let cols = canvas.width() as i32;
 
@@ -49,6 +49,7 @@ fn main() {
     );
 
     for step in 0..=u64::MAX {
+        // The canvas returned by `update_on_vsync` is already cleared.
         circle.draw(&mut canvas).unwrap();
         [diagonal1, diagonal2, top, bottom, left, right]
             .iter()

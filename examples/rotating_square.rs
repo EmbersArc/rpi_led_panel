@@ -23,6 +23,7 @@ fn main() {
 
     let config: RGBMatrixConfig = argh::from_env();
     let (mut matrix, mut canvas) = RGBMatrix::new(config).expect("Matrix initialization failed");
+    // The canvas size includes chained panels and pixel mappers.
     let rows = canvas.height() as isize;
     let cols = canvas.width() as isize;
 
@@ -42,6 +43,7 @@ fn main() {
                 );
                 let x = (src_x + center_x as f64).round() as isize;
                 let y = (src_y + center_y as f64).round() as isize;
+                // The canvas returned by `update_on_vsync` is already cleared, so only draw the square.
                 if (min_x..max_x).contains(&x) && (min_y..max_y).contains(&y) {
                     canvas.set_pixel(
                         canvas_x as usize,
@@ -50,8 +52,6 @@ fn main() {
                         255 - scale_col(y, min_y, max_y),
                         scale_col(y, min_y, max_y),
                     )
-                } else {
-                    canvas.set_pixel(canvas_x as usize, canvas_y as usize, 0, 0, 0)
                 }
             }
         }

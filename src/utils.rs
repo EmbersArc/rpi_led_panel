@@ -1,10 +1,8 @@
-use libc::{
-    CPU_SET, c_int, cpu_set_t, getgrnam, getpwnam, gid_t, sched_setaffinity, setgid, setuid, uid_t,
-};
+use libc::{getgrnam, getpwnam, gid_t, setgid, setuid, uid_t};
 use std::{
     ffi::CString,
-    fs::read_to_string,
-    io,
+    fs::File,
+    io::{BufRead, BufReader},
     sync::Arc,
     sync::atomic::{AtomicU32, Ordering},
     thread, time,
@@ -23,46 +21,56 @@ macro_rules! gpio_bits {
     };
 }
 
-#[must_use]
 pub(crate) fn linux_has_module_loaded(name: &str) -> bool {
-    read_to_string("/proc/modules").is_ok_and(|modules| module_list_contains(&modules, name))
-}
-
-/// Each line of `/proc/modules` starts with the module name, e.g. `snd_bcm2835 24576 0 - Live 0x0`.
-#[must_use]
-fn module_list_contains(modules: &str, name: &str) -> bool {
-    modules
+    let Ok(file) = File::open("/proc/modules") else {
+        return false;
+    };
+    let reader = BufReader::new(file);
+    // Each line starts with the module name followed by a space.
+    reader
         .lines()
-        .any(|line| line.split_whitespace().next() == Some(name))
+        .map_while(Result::ok)
+        .any(|line| line.split(' ').next() == Some(name))
 }
 
-#[must_use]
 pub(crate) fn linux_has_isol_cpu(cpu: usize) -> bool {
-    read_to_string("/sys/devices/system/cpu/isolated")
-        .is_ok_and(|cpus| cpu_list_contains(&cpus, cpu))
+    let Ok(file) = File::open("/sys/devices/system/cpu/isolated") else {
+        return false;
+    };
+    let reader = BufReader::new(file);
+    reader
+        .lines()
+        .map_while(Result::ok)
+        .any(|line| cpu_list_contains(&line, cpu))
 }
 
-/// Whether a CPU list like `1,3-5` contains the CPU.
-#[must_use]
-fn cpu_list_contains(cpus: &str, cpu: usize) -> bool {
-    cpus.trim().split(',').any(|range| {
-        let (start, end) = range.split_once('-').unwrap_or((range, range));
-        match (start.parse::<usize>(), end.parse::<usize>()) {
-            (Ok(start), Ok(end)) => (start..=end).contains(&cpu),
+/// Checks if a kernel CPU list such as "1-3,5" contains the given CPU.
+fn cpu_list_contains(list: &str, cpu: usize) -> bool {
+    list.trim().split(',').any(|range| {
+        let mut bounds = range.split('-').map(|n| n.trim().parse::<usize>());
+        match (bounds.next(), bounds.next()) {
+            (Some(Ok(first)), None) => first == cpu,
+            (Some(Ok(first)), Some(Ok(last))) => (first..=last).contains(&cpu),
             _ => false,
         }
     })
 }
 
-/// Pin the current thread to a core. Returns whether it succeeded.
-#[must_use]
-pub(crate) fn set_thread_affinity(core_id: usize) -> bool {
+/// Pins the current thread to the given core. Returns `true` on success.
+#[cfg(target_os = "linux")]
+pub fn set_thread_affinity(core_id: usize) -> bool {
+    use libc::{CPU_SET, cpu_set_t, sched_setaffinity};
     let mut set: cpu_set_t = unsafe { std::mem::zeroed() };
     unsafe { CPU_SET(core_id, &mut set) }
     let cpusetsize = std::mem::size_of::<cpu_set_t>();
-    let mask = &set;
-    let res = unsafe { sched_setaffinity(0, cpusetsize, mask) };
+    let res = unsafe { sched_setaffinity(0, cpusetsize, &set) };
     res == 0
+}
+
+/// Thread affinity is only supported on Linux.
+#[cfg(not(target_os = "linux"))]
+pub fn set_thread_affinity(_core_id: usize) -> bool {
+    false
 }
 
 fn gid_from_name(group: &str) -> Option<gid_t> {
@@ -73,22 +81,13 @@ fn gid_from_name(group: &str) -> Option<gid_t> {
     }
 }
 
-/// Turn the return value of a libc call into the error it set.
-fn check_libc_result(result: c_int) -> io::Result<()> {
-    if result == 0 {
-        Ok(())
-    } else {
-        Err(io::Error::last_os_error())
-    }
+fn set_gid(gid: gid_t) -> bool {
+    unsafe { setgid(gid) == 0 }
 }
 
-fn set_gid(gid: gid_t) -> io::Result<()> {
-    check_libc_result(unsafe { setgid(gid) })
-}
-
-fn set_supplementary_groups(gid: gid_t) -> io::Result<()> {
+fn set_supplementary_groups(gid: gid_t) -> bool {
     let groups = [gid];
-    check_libc_result(unsafe { libc::setgroups(groups.len(), groups.as_ptr()) })
+    unsafe { libc::setgroups(groups.len() as _, groups.as_ptr()) == 0 }
 }
 
 fn uid_from_name(user: &str) -> Option<uid_t> {
@@ -99,8 +98,8 @@ fn uid_from_name(user: &str) -> Option<uid_t> {
     }
 }
 
-fn set_uid(uid: uid_t) -> io::Result<()> {
-    check_libc_result(unsafe { setuid(uid) })
+fn set_uid(uid: uid_t) -> bool {
+    unsafe { setuid(uid) == 0 }
 }
 
 /// Drop to the provided user / group's privileges.
@@ -117,10 +116,15 @@ pub(crate) fn drop_privs(user: &str, group: &str) -> Result<(), String> {
         .or_else(|| uid_from_name(user))
         .ok_or_else(|| format!("Failed to get UID for user '{user}'"))?;
 
-    set_supplementary_groups(gid)
-        .map_err(|error| format!("Failed to set supplementary groups: {error}"))?;
-    set_gid(gid).map_err(|error| format!("Failed to set GID {gid}: {error}"))?;
-    set_uid(uid).map_err(|error| format!("Failed to set UID {uid}: {error}"))?;
+    if !set_supplementary_groups(gid) {
+        return Err(String::from("Failed to set supplementary groups"));
+    }
+    if !set_gid(gid) {
+        return Err(String::from("Failed to set GID"));
+    }
+    if !set_uid(uid) {
+        return Err(String::from("Failed to set UID"));
+    }
 
     Ok(())
 }
@@ -165,25 +169,27 @@ impl FrameRateMonitor {
     }
 }
 
-/// Sleep for as long as we are comfortable without overshooting.
+/// Sleep for as long as we are comfortable without overshooting. The OS usually wakes us up late, so we wake
+/// up `min_sys_sleep_time` early and the caller is expected to busy-wait for the rest.
 pub(crate) fn sleep_at_most(duration: time::Duration, min_sys_sleep_time: time::Duration) {
     if duration > min_sys_sleep_time {
         thread::sleep(duration - min_sys_sleep_time);
     }
 }
 
-/// Sleep for exactly this long by busy waiting the last part.
-pub(crate) fn sleep_exactly(duration: time::Duration, min_sys_sleep_time: time::Duration) {
-    let end_time = time::Instant::now() + duration;
+/// Wait for the given number of nanoseconds, sleeping for longer durations and busy-waiting for the rest.
+pub(crate) fn sleep_nanos(nanos: u32, min_sys_sleep_time: time::Duration) {
+    let start = time::Instant::now();
+    let duration = time::Duration::from_nanos(u64::from(nanos));
     sleep_at_most(duration, min_sys_sleep_time);
-    while time::Instant::now() < end_time {
+    while start.elapsed() < duration {
         std::hint::spin_loop();
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{cpu_list_contains, module_list_contains};
+    use super::cpu_list_contains;
 
     #[test]
     fn test_gpio_bits() {
@@ -191,22 +197,12 @@ mod tests {
     }
 
     #[test]
-    fn test_module_list_contains() {
-        let modules = "snd_bcm2835 24576 0 - Live 0x0\nsnd_pcm 114688 1 snd_bcm2835, Live 0x0\n";
-        assert!(module_list_contains(modules, "snd_bcm2835"));
-        assert!(!module_list_contains(modules, "snd"));
-        assert!(!module_list_contains(modules, "bcm2835"));
-        assert!(!module_list_contains(modules, "w1_gpio"));
-        assert!(!module_list_contains("", "w1_gpio"));
-    }
-
-    #[test]
     fn test_cpu_list_contains() {
         assert!(cpu_list_contains("3\n", 3));
-        assert!(!cpu_list_contains("13\n", 3));
-        assert!(cpu_list_contains("1-4\n", 3));
-        assert!(cpu_list_contains("0,2-3\n", 3));
-        assert!(!cpu_list_contains("0,2-3\n", 1));
-        assert!(!cpu_list_contains("\n", 0));
+        assert!(!cpu_list_contains("13", 3));
+        assert!(cpu_list_contains("1-3", 2));
+        assert!(cpu_list_contains("0,2-3", 3));
+        assert!(!cpu_list_contains("0,2-3", 1));
+        assert!(!cpu_list_contains("", 0));
     }
 }

@@ -19,51 +19,35 @@ pub enum PiChip {
     /// Model 4
     #[strum(serialize = "BCM2711")]
     BCM2711,
+    /// Model 5, whose GPIO pins are connected to the RP1 I/O controller.
+    #[strum(serialize = "BCM2712")]
+    BCM2712,
+}
+
+/// Reads the hexadecimal revision code from the "Revision" line of /proc/cpuinfo.
+fn revision_from_cpuinfo(cpuinfo: &str) -> Option<u32> {
+    let line = cpuinfo.lines().find(|line| line.starts_with("Revision"))?;
+    let (_, revision) = line.split_once(':')?;
+    u32::from_str_radix(revision.trim(), 16).ok()
 }
 
 impl PiChip {
     /// Try to automatically determine the model.
     #[must_use]
     pub fn determine() -> Option<Self> {
-        // Provided by the Raspberry Pi kernel.
-        if let Ok(cpuinfo) = read_to_string("/proc/cpuinfo") {
-            if let Some(chip) = Self::from_cpuinfo(&cpuinfo) {
-                return Some(chip);
-            }
-        }
-        // Provided by mainline kernels (Arch Linux ARM, Debian, Fedora, etc.).
-        if let Ok(compatible) = read("/proc/device-tree/compatible") {
-            if let Some(chip) = Self::from_device_tree_compatible(&compatible) {
-                return Some(chip);
-            }
-        }
-        None
-    }
-
-    fn from_cpuinfo(cpuinfo: &str) -> Option<Self> {
-        let line = cpuinfo.lines().find(|line| line.starts_with("Revision"))?;
-        // https://www.raspberrypi.com/documentation/computers/raspberry-pi.html#raspberry-pi-revision-codes
-        let revision_str = line.split(' ').next_back()?;
-        let revision = u32::from_str_radix(revision_str, 16).ok()?;
-        // Bits: NOQuuuWuFMMMCCCCPPPPTTTTTTTTRRRR
-        //               ^ new-style flag
-        //                       ^^^^ processor model
-        let new_style = (revision >> 23) & 1 == 1;
-        if !new_style {
-            // Old-style codes (e.g. `000e`, or `100000e` with the warranty bit set) are all BCM2835 boards.
-            return Some(Self::BCM2708);
-        }
-        match (revision >> 12) & 0b1111 {
-            // BCM2835
-            0 => Some(Self::BCM2708),
-            // BCM2836
-            1 => Some(Self::BCM2709),
-            // BCM2837
-            2 => Some(Self::BCM2709),
-            // BCM2711
-            3 => Some(Self::BCM2711),
-            _ => None,
-        }
+        read_to_string("/proc/cpuinfo")
+            .ok()
+            .and_then(|cpuinfo| revision_from_cpuinfo(&cpuinfo))
+            // Kernels that don't list the revision in /proc/cpuinfo still have it in the device tree.
+            .or_else(|| {
+                let bytes = read("/proc/device-tree/system/linux,revision").ok()?;
+                Some(u32::from_be_bytes(bytes.get(..4)?.try_into().ok()?))
+            })
+            .and_then(Self::from_revision)
+            // Provided by mainline kernels (Arch Linux ARM, Debian, Fedora, etc.), which have neither.
+            .or_else(|| {
+                Self::from_device_tree_compatible(&read("/proc/device-tree/compatible").ok()?)
+            })
     }
 
     /// The `compatible` property is a list of NUL-terminated strings, e.g.
@@ -76,30 +60,109 @@ impl PiChip {
                 Some(Self::BCM2709)
             }
             b"brcm,bcm2711" => Some(Self::BCM2711),
+            b"brcm,bcm2712" => Some(Self::BCM2712),
             _ => None,
         })
+    }
+
+    /// Get the chip from the revision code, see
+    /// <https://www.raspberrypi.com/documentation/computers/raspberry-pi.html#raspberry-pi-revision-codes>.
+    fn from_revision(revision: u32) -> Option<Self> {
+        // Bits: NOQuuuWuFMMMCCCCPPPPTTTTTTTTRRRR
+        //               ^ new style flag
+        const NEW_STYLE_FLAG: u32 = 1 << 23;
+        if revision & NEW_STYLE_FLAG == 0 {
+            // Old style revision codes are only used by the original models.
+            return Some(Self::BCM2708);
+        }
+        // Bits: NOQuuuWuFMMMCCCCPPPPTTTTTTTTRRRR
+        //                       ^^^^ processor model
+        match (revision >> 12) & 0b1111 {
+            // BCM2835
+            0 => Some(Self::BCM2708),
+            // BCM2836
+            1 => Some(Self::BCM2709),
+            // BCM2837
+            2 => Some(Self::BCM2709),
+            // BCM2711
+            3 => Some(Self::BCM2711),
+            // BCM2712
+            4 => Some(Self::BCM2712),
+            _ => None,
+        }
     }
 
     pub(crate) const fn num_cores(self) -> usize {
         match self {
             PiChip::BCM2708 => 1,
-            PiChip::BCM2709 | PiChip::BCM2711 => 4,
+            PiChip::BCM2709 | PiChip::BCM2711 | PiChip::BCM2712 => 4,
         }
     }
 
-    // All peripherals can be described by an offset from the Peripheral Base Address.
-    pub(crate) const fn peripherals_base(self) -> u64 {
+    /// Whether the GPIO pins are driven through the RP1 I/O controller instead of the chip's own peripherals.
+    pub(crate) const fn uses_rp1(self) -> bool {
+        matches!(self, PiChip::BCM2712)
+    }
+
+    /// All peripherals can be described by an offset from the Peripheral Base Address. The GPIO pins of the
+    /// BCM2712 are not among them.
+    pub(crate) const fn peripherals_base(self) -> Option<u64> {
         match self {
-            PiChip::BCM2708 => 0x2000_0000,
-            PiChip::BCM2709 => 0x3F00_0000,
-            PiChip::BCM2711 => 0xFE00_0000,
+            PiChip::BCM2708 => Some(0x2000_0000),
+            PiChip::BCM2709 => Some(0x3F00_0000),
+            PiChip::BCM2711 => Some(0xFE00_0000),
+            PiChip::BCM2712 => None,
         }
     }
 
-    pub(crate) fn gpio_slowdown(self) -> u32 {
+    pub(crate) fn gpio_slowdown(self) -> i32 {
         match self {
-            PiChip::BCM2708 | PiChip::BCM2709 => 1,
+            PiChip::BCM2708 | PiChip::BCM2709 | PiChip::BCM2712 => 1,
             PiChip::BCM2711 => 3,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PiChip, revision_from_cpuinfo};
+
+    #[test]
+    fn determines_chip_from_revision() {
+        let chip = |cpuinfo| PiChip::from_revision(revision_from_cpuinfo(cpuinfo).unwrap());
+        assert_eq!(chip("Revision\t: 000e"), Some(PiChip::BCM2708));
+        // Old style revision of an overvolted Pi.
+        assert_eq!(chip("Revision\t: 1000002"), Some(PiChip::BCM2708));
+        assert_eq!(chip("Revision\t: 9000c1"), Some(PiChip::BCM2708)); // Zero W
+        assert_eq!(chip("Revision\t: a01041"), Some(PiChip::BCM2709)); // 2B
+        assert_eq!(chip("Revision\t: a02082"), Some(PiChip::BCM2709)); // 3B
+        assert_eq!(chip("Revision\t: 902120"), Some(PiChip::BCM2709)); // Zero 2 W
+        assert_eq!(chip("Revision\t: c03111"), Some(PiChip::BCM2711)); // 4B
+        assert_eq!(chip("Revision\t: c04170"), Some(PiChip::BCM2712)); // 5B
+        assert_eq!(chip("Revision\t: d04190"), Some(PiChip::BCM2712)); // 500
+        assert_eq!(chip("Revision\t: c05170"), None); // Unknown processor
+        assert_eq!(revision_from_cpuinfo("CPU revision\t: 3"), None);
+    }
+
+    #[test]
+    fn determines_chip_from_device_tree_compatible() {
+        let chip = PiChip::from_device_tree_compatible;
+        assert_eq!(
+            chip(b"raspberrypi,4-model-b\0brcm,bcm2711\0"),
+            Some(PiChip::BCM2711)
+        );
+        assert_eq!(
+            chip(b"raspberrypi,3-model-b\0brcm,bcm2837\0"),
+            Some(PiChip::BCM2709)
+        );
+        assert_eq!(
+            chip(b"raspberrypi,5-model-b\0brcm,bcm2712\0"),
+            Some(PiChip::BCM2712)
+        );
+        assert_eq!(
+            chip(b"raspberrypi,model-zero\0brcm,bcm2835\0"),
+            Some(PiChip::BCM2708)
+        );
+        assert_eq!(chip(b"pine64,rock64\0"), None);
     }
 }

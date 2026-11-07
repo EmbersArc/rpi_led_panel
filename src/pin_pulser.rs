@@ -1,94 +1,85 @@
 use std::time::Duration;
 
 use crate::{
-    gpio_bits,
+    RGBMatrixConfig, gpio_bits,
+    hardware_mapping::GpioBits,
     registers::{ClkRegisters, GPIOFunction, GPIORegisters, PWMRegisters, TimeRegisters},
     utils::sleep_at_most,
 };
 
 const PWM_BASE_TIME_NS: u32 = 2;
 
-/// The pin and function that connect the output enable to PWM0, if it is on such a pin.
-pub(crate) fn pwm_pin_function(pins: u32) -> Option<(u8, GPIOFunction)> {
-    if pins == gpio_bits!(18) {
-        Some((18, GPIOFunction::Alt5))
-    } else if pins == gpio_bits!(12) {
-        Some((12, GPIOFunction::Alt0))
-    } else {
-        None
-    }
+/// Output enable pins that can be driven by the PWM hardware.
+pub(crate) const HARDWARE_PULSE_PINS: [GpioBits; 2] = [gpio_bits!(18), gpio_bits!(12)];
+
+/// Whether the BCM backend times the output enable pulses with the PWM hardware for this configuration, which
+/// needs the PWM peripheral (and so conflicts with the on-board sound) and limits `pwm_lsb_nanoseconds`.
+pub(crate) fn uses_hardware_pulse(config: &RGBMatrixConfig) -> bool {
+    config.hardware_pulse && HARDWARE_PULSE_PINS.contains(&config.hardware_mapping.output_enable)
 }
 
+/// Generates the output enable pulses that light up the LEDs for the duration of a bit plane.
 pub(crate) enum PinPulser {
-    /// The output enable is driven by the PWM peripheral, which times the pulses in hardware.
+    /// Uses the PWM peripheral for exact timing. Requires output enable on GPIO 18 or 12.
     Hardware(HardwarePinPulser),
-    /// Fallback for output enable pins that are not connected to the PWM peripheral. The pulses are timed in
-    /// software, which is less accurate and keeps the CPU busy for the whole on-time.
-    Software {
-        /// The output enable pins.
-        pins: u32,
-        /// Pulse duration for each bit plane.
-        pulse_durations: Vec<Duration>,
-    },
+    /// Toggles the output enable pins directly for wirings that are not connected to the PWM peripheral.
+    Timer(TimerPinPulser),
 }
 
-impl PinPulser {
-    pub(crate) fn new(
-        pins: u32,
-        bitplane_timings_ns: &[u32],
-        min_sys_sleep_time: Duration,
-        pwm_registers: PWMRegisters,
-        gpio_registers: &mut GPIORegisters,
-        clk_registers: &mut ClkRegisters,
-    ) -> Self {
-        if let Some((pin, function)) = pwm_pin_function(pins) {
-            gpio_registers.select_function(pin, function);
-            Self::Hardware(HardwarePinPulser::new(
-                bitplane_timings_ns,
-                min_sys_sleep_time,
-                pwm_registers,
-                clk_registers,
-            ))
-        } else {
-            // The output enable is active low, so keep the panel dark until the first pulse.
-            gpio_registers.write_set_bits(pins);
-            let pulse_durations = bitplane_timings_ns
-                .iter()
-                .map(|&timing| Duration::from_nanos(u64::from(timing)))
-                .collect();
-            Self::Software {
-                pins,
-                pulse_durations,
-            }
+pub(crate) struct TimerPinPulser {
+    pins: GpioBits,
+    bitplane_timings_ns: Vec<u32>,
+}
+
+impl TimerPinPulser {
+    pub(crate) fn new(pins: GpioBits, bitplane_timings_ns: &[u32]) -> Self {
+        Self {
+            pins,
+            bitplane_timings_ns: bitplane_timings_ns.to_vec(),
         }
     }
+
+    /// The (active low) output enable pins and how long they need to be enabled for the bit plane.
+    pub(crate) fn pulse(&self, bitplane: usize) -> (GpioBits, u32) {
+        (self.pins, self.bitplane_timings_ns[bitplane])
+    }
+}
+
+struct Pulse {
+    start_time: u64,
+    sleep_hint_us: u32,
 }
 
 pub(crate) struct HardwarePinPulser {
-    pwm_registers: PWMRegisters,
-    /// Hints how long to sleep for each bit plane.
-    sleep_hints_us: Vec<u64>,
+    /// Hints how long to sleep.
+    sleep_hints_us: Vec<u32>,
     /// Pulse period for each bit plane.
     pulse_periods: Vec<u32>,
-    /// When the current pulse is expected to end.
-    pulse_end_hint_us: Option<u64>,
-    /// Shorter waits are busy waited and longer ones wake up this early.
-    min_sys_sleep_time: Duration,
+    /// The current pulse.
+    current_pulse: Option<Pulse>,
 }
 
 impl HardwarePinPulser {
-    fn new(
+    pub(crate) fn new(
+        pins: GpioBits,
         bitplane_timings_ns: &[u32],
-        min_sys_sleep_time: Duration,
-        mut pwm_registers: PWMRegisters,
+        pwm_registers: &mut PWMRegisters,
+        gpio_registers: &mut GPIORegisters,
         clk_registers: &mut ClkRegisters,
     ) -> Self {
-        let sleep_hints_us = bitplane_timings_ns
-            .iter()
-            .map(|&t| u64::from(t / 1000))
-            .collect();
+        let sleep_hints_us = bitplane_timings_ns.iter().map(|t| t / 1000).collect();
 
         let time_base = bitplane_timings_ns[0];
+
+        if pins == gpio_bits!(18) {
+            // Set GPIO 18 to PWM0 mode
+            gpio_registers.select_function(18, GPIOFunction::Alt5);
+        } else if pins == gpio_bits!(12) {
+            // Set GPIO 12 to PWM0 mode
+            gpio_registers.select_function(12, GPIOFunction::Alt0);
+        } else {
+            unreachable!("Only GPIO 18 and 12 support hardware pulses.")
+        }
 
         pwm_registers.reset_pwm();
         clk_registers.init_pwm_divider((time_base / 2) / PWM_BASE_TIME_NS);
@@ -98,16 +89,18 @@ impl HardwarePinPulser {
             .collect();
 
         Self {
-            pwm_registers,
             sleep_hints_us,
             pulse_periods,
-            pulse_end_hint_us: None,
-            min_sys_sleep_time,
+            current_pulse: None,
         }
     }
 
-    pub(crate) fn send_pulse(&mut self, bitplane: usize, time_registers: &TimeRegisters) {
-        let pwm_registers = &mut self.pwm_registers;
+    pub(crate) fn send_pulse(
+        &mut self,
+        bitplane: usize,
+        pwm_registers: &mut PWMRegisters,
+        time_registers: &mut TimeRegisters,
+    ) {
         if self.pulse_periods[bitplane] < 16 {
             pwm_registers.set_pwm_pulse_period(self.pulse_periods[bitplane]);
             pwm_registers.push_fifo(self.pulse_periods[bitplane]);
@@ -132,26 +125,32 @@ impl HardwarePinPulser {
         // kept after the FIFO is emptied.
         pwm_registers.push_fifo(0);
 
-        self.pulse_end_hint_us = Some(time_registers.time() + self.sleep_hints_us[bitplane]);
+        self.current_pulse = Some(Pulse {
+            start_time: time_registers.time(),
+            sleep_hint_us: self.sleep_hints_us[bitplane],
+        });
         pwm_registers.enable_pwm();
     }
 
-    pub(crate) fn wait_pulse_finished(&mut self, time_registers: &TimeRegisters) {
-        let Some(pulse_end_hint_us) = self.pulse_end_hint_us.take() else {
+    pub(crate) fn wait_pulse_finished(
+        &mut self,
+        time_registers: &mut TimeRegisters,
+        pwm_registers: &mut PWMRegisters,
+        min_sys_sleep_time: Duration,
+    ) {
+        let Some(pulse) = self.current_pulse.take() else {
             return;
         };
 
-        let remaining_time_us = pulse_end_hint_us.saturating_sub(time_registers.time());
-        sleep_at_most(
-            Duration::from_micros(remaining_time_us),
-            self.min_sys_sleep_time,
-        );
+        let already_elapsed_us = time_registers.time().saturating_sub(pulse.start_time);
+        let remaining_time_us = u64::from(pulse.sleep_hint_us).saturating_sub(already_elapsed_us);
+        sleep_at_most(Duration::from_micros(remaining_time_us), min_sys_sleep_time);
 
-        while !self.pwm_registers.fifo_empty() {
+        while !pwm_registers.fifo_empty() {
             // busy wait until done.
             std::hint::spin_loop();
         }
 
-        self.pwm_registers.reset_pwm();
+        pwm_registers.reset_pwm();
     }
 }
