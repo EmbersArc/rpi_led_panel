@@ -4,16 +4,21 @@ use crate::config::BIT_PLANES;
 
 static CIE1931: LazyLock<ColorLookup> = LazyLock::new(ColorLookup::new_cie1931);
 
-// Do CIE1931 luminance correction and scale to output bitplanes
+/// CIE1931 lightness L* (0-100) to relative luminance (0-1).
+fn cie1931(l: f32) -> f32 {
+    if l <= 8.0 {
+        l / 902.3
+    } else {
+        ((l + 16.0) / 116.0).powi(3)
+    }
+}
+
+// Luminance-correct `c`, then scale linearly by brightness so blended colors keep their ratios when dimmed.
 fn luminance_cie1931(c: u8, brightness: u8) -> u16 {
     let out_factor = ((1 << BIT_PLANES) - 1) as f32;
-    let v = f32::from(c) * f32::from(brightness) / 255.0;
-    (out_factor
-        * (if v <= 8.0 {
-            v / 902.3
-        } else {
-            ((v + 16.0) / 116.0).powi(3)
-        })) as u16
+    let color = cie1931(f32::from(c) * 100.0 / 255.0);
+    let brightness = cie1931(f32::from(brightness));
+    (out_factor * color * brightness) as u16
 }
 
 pub(crate) struct ColorLookup {
