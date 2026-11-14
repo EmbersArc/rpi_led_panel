@@ -7,7 +7,6 @@ license = "GPL-3.0"
 authors = ["Sven Niederberger <s-niederberger@outlook.com>"]
 description = "Control LED matrices with a Raspberry Pi."
 repository = "https://github.com/EmbersArc/rpi_led_panel"
-homepage = "https://github.com/EmbersArc/rpi_led_panel"
 readme = "README.md"
 keywords = ["led", "matrix", "raspberry", "pi", "rgb"]
 
