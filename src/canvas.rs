@@ -257,7 +257,25 @@ impl Canvas {
     }
 
     /// Set the color of a pixel. Pixels outside of the canvas are ignored.
+    ///
+    /// The values are perceptual (CIE1931 lightness), so `128` looks about half as bright as `255` but emits
+    /// much less than half the light. Use [`Canvas::set_pixel_linear`] for blended or anti-aliased content.
     pub fn set_pixel(&mut self, x: usize, y: usize, r: u8, g: u8, b: u8) {
+        let color = self.color_lookup.lookup_rgb(self.brightness, r, g, b);
+        self.write_pixel(x, y, color);
+    }
+
+    /// Set the color of a pixel in linear light, 0-1 per channel. Values outside of that range are clamped.
+    /// Pixels outside of the canvas are ignored.
+    ///
+    /// Light adds up linearly, so this is the right space for blending, anti-aliasing and interpolation. It also
+    /// uses the full PWM resolution instead of 8 bits.
+    pub fn set_pixel_linear(&mut self, x: usize, y: usize, r: f32, g: f32, b: f32) {
+        let color = self.color_lookup.linear_rgb(self.brightness, [r, g, b]);
+        self.write_pixel(x, y, color);
+    }
+
+    fn write_pixel(&mut self, x: usize, y: usize, color: [u16; 3]) {
         if x >= self.width() || y >= self.height() {
             return;
         }
@@ -268,8 +286,6 @@ impl Canvas {
 
         let pos_start = designator.gpio_word as usize;
         let designator_mask = !(designator.r_bit | designator.g_bit | designator.b_bit);
-
-        let color = self.color_lookup.lookup_rgb(self.brightness, r, g, b);
 
         let min_bit_plane = BIT_PLANES - self.pwm_bits;
 

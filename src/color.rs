@@ -18,11 +18,12 @@ fn luminance_cie1931(c: u8, brightness: u8) -> u16 {
     let out_factor = ((1 << BIT_PLANES) - 1) as f32;
     let color = cie1931(f32::from(c) * 100.0 / 255.0);
     let brightness = cie1931(f32::from(brightness));
-    (out_factor * color * brightness) as u16
+    (out_factor * color * brightness).round() as u16
 }
 
 pub(crate) struct ColorLookup {
     per_brightness: [[u16; 256]; 100],
+    brightness_factors: [f32; 100],
 }
 
 impl ColorLookup {
@@ -32,13 +33,12 @@ impl ColorLookup {
     }
 
     fn new_cie1931() -> Self {
-        let mut per_brightness = [[0; 256]; 100];
-        for c in 0..=255u8 {
-            for b in 0..100u8 {
-                per_brightness[usize::from(b)][usize::from(c)] = luminance_cie1931(c, b + 1);
-            }
+        Self {
+            per_brightness: std::array::from_fn(|b| {
+                std::array::from_fn(|c| luminance_cie1931(c as u8, b as u8 + 1))
+            }),
+            brightness_factors: std::array::from_fn(|b| cie1931((b + 1) as f32)),
         }
-        Self { per_brightness }
     }
 
     pub(crate) fn lookup_rgb(&self, brightness: u8, r: u8, g: u8, b: u8) -> [u16; 3] {
@@ -48,5 +48,12 @@ impl ColorLookup {
             for_brightness[g as usize],
             for_brightness[b as usize],
         ]
+    }
+
+    /// Linear light (0-1 per channel) to output bitplane values, scaled by brightness.
+    pub(crate) fn linear_rgb(&self, brightness: u8, rgb: [f32; 3]) -> [u16; 3] {
+        let factor =
+            ((1 << BIT_PLANES) - 1) as f32 * self.brightness_factors[brightness as usize - 1];
+        rgb.map(|c| (c.clamp(0.0, 1.0) * factor).round() as u16)
     }
 }
